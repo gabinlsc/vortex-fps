@@ -1,0 +1,172 @@
+import {createServer} from 'node:http';
+import {randomBytes} from 'node:crypto';
+import {WebSocketServer,WebSocket} from 'ws';
+import {createArena,RapierMotor,eye} from '../shared/physics.ts';
+import {initialState,copyState} from '../shared/movement.ts';
+import {Button,DT,TICK_HZ,decodeBatch,type Input} from '../shared/input.ts';
+import {encodeSnapshot,type PlayerSnapshot} from '../shared/snapshot.ts';
+import {BOXES,MAP_VERSION} from '../shared/map.ts';
+import {WEAPONS,recoil,projectileStep,type Projectile} from '../shared/gunplay.ts';
+import {History,bodyHitbox,direction,rewindTime,castHistorical,rayBox} from './lag-compensation.ts';
+import {verifyTicket} from './tickets.ts';
+import {AgonesLifecycle} from './agones.ts';
+
+const dev=process.argv.includes('--local-dev'),secret=process.env.TICKET_SECRET??'',match=process.env.MATCH_ID??'local-match';
+if(!dev && secret.length<32)throw new Error('TICKET_SECRET required. Local development: npm run server:dev');
+const host=dev?'127.0.0.1':process.env.HOST??'0.0.0.0',port=Number(process.env.PORT??8080);
+if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid port');
+const origins=new Set((process.env.ALLOWED_ORIGINS??'http://localhost:5173,http://127.0.0.1:5173').split(','));
+const world=await createArena(),handles=new Set<number>(),history=new History(32),lifecycle=new AgonesLifecycle();
+let tick=0,nextId=1,running=true;
+interface Queued {input:Input;receiptTick:number}
+interface Peer {
+  id:number;sub:string;ws:WebSocket;motor:RapierMotor;queue:Queued[];head:number;
+  received:number;ack:number;last:Input;epoch:number;health:number;hits:number;nextShot:number;shotIndex:number;
+  ammo:number[];rtt:number;rttSamples:number[];nonce:Buffer|null;pingTime:number;authTime:number;
+  budget:number;budgetTime:number;lastPacket:number;
+}
+const peers=new Map<number,Peer>(),subjects=new Set<string>(),redeemed=new Map<string,number>();
+const projectiles:Projectile[]=[];
+function wallDistance(o:{x:number;y:number;z:number},d:{x:number;y:number;z:number},range=200):number {
+  let nearest=range;for(const b of BOXES){const t=rayBox(o,d,b.p,b.h);if(t!==null)nearest=Math.min(nearest,t);}return nearest;
+}
+function damage(id:number,epoch:number,amount:number,owner:Peer):void {
+  const target=peers.get(id);if(!target || target.epoch!==epoch)return;
+  target.health-=amount;owner.hits++;
+  if(target.health<=0){
+    target.epoch++;target.health=100;target.shotIndex=0;target.ammo=WEAPONS.map(w=>w.ammo);
+    target.nextShot=tick+TICK_HZ;target.last={...target.last,buttons:0};
+    target.motor.restore(initialState((target.id%4)*3-5,1,(target.epoch%3)*4-4));
+  }
+}
+function shoot(p:Peer,queued:Queued|undefined):void {
+  const input=p.last;if(!(input.buttons&Button.Fire)||tick<p.nextShot)return;
+  const weapon=WEAPONS[input.weapon];if(!weapon||p.ammo[input.weapon]<=0)return;
+  p.ammo[input.weapon]--;p.nextShot=tick+weapon.cooldownTicks;
+  const pattern=recoil(p.shotIndex++),d=direction(input.yaw+pattern.yaw,
+    Math.max(-Math.PI/2,Math.min(Math.PI/2,input.pitch+pattern.pitch))),o=eye(p.motor.state);
+  if(input.weapon===1){
+    if(projectiles.length<256)projectiles.push({owner:p.id,ownerEpoch:p.epoch,p:{...o},
+      v:{x:d.x*40,y:d.y*40,z:d.z*40},life:3*TICK_HZ,damage:weapon.damage});return;
+  }
+  // Historical targets; source is the server-simulated position of this command, never a client origin.
+  const now=tick*DT,query=rewindTime(now,{rttMs:p.rtt,interpolationMs:50,
+    queueMs:queued?(tick-queued.receiptTick)*DT*1000:0});
+  const boxes=history.sample(query);if(!boxes)return;
+  const hit=castHistorical(o,d,p.id,boxes,wallDistance(o,d),weapon.range);
+  if(hit)damage(hit.id,hit.epoch,weapon.damage,p);
+}
+function fixedTick():void {
+  const commands=new Map<number,Queued|undefined>();tick++;
+  for(const p of peers.values()){
+    const cmd=p.queue[p.head++];
+    if(cmd){p.last=cmd.input;p.ack=cmd.input.seq;}else p.head=Math.max(0,p.head-1);
+    if(p.head>32){p.queue=p.queue.slice(p.head);p.head=0;}
+    // Missing commands may hold movement/fire at server rate, never advance time or create extra edges.
+    if(performance.now()-p.lastPacket>150)p.last={...p.last,buttons:0};
+    p.motor.tick(p.last);commands.set(p.id,cmd);
+  }
+  world.step();
+  history.push({time:tick*DT,boxes:[...peers.values()].map(p=>bodyHitbox(p.id,p.epoch,{...p.motor.state.p},p.motor.state.crouched))});
+  for(const p of peers.values())shoot(p,commands.get(p.id));
+  const boxes=[...peers.values()].map(p=>bodyHitbox(p.id,p.epoch,p.motor.state.p,p.motor.state.crouched));
+  for(let i=projectiles.length-1;i>=0;i--){
+    const projectile=projectiles[i],segment=projectileStep(projectile,DT),owner=peers.get(projectile.owner);
+    const wall=wallDistance(segment.from,segment.direction,segment.distance);
+    const hit=castHistorical(segment.from,segment.direction,projectile.owner,boxes,wall,segment.distance);
+    if(hit&&owner&&owner.epoch===projectile.ownerEpoch)damage(hit.id,hit.epoch,projectile.damage,owner);
+    if(hit||wall<segment.distance||projectile.life<=0)projectiles.splice(i,1);
+  }
+  if(tick%4===0){ // 32 snapshots/s independent from 128 physics ticks/s
+    const players:PlayerSnapshot[]=[...peers.values()].map(p=>({id:p.id,ack:p.ack,state:copyState(p.motor.state),
+      yaw:p.last.yaw,pitch:p.last.pitch,health:p.health,epoch:p.epoch,hits:p.hits}));
+    for(const p of peers.values()){
+      if(p.ws.bufferedAmount>64*1024){p.ws.close(1013,'Slow consumer');continue;}
+      p.ws.send(encodeSnapshot({tick,time:tick*DT,self:p.id,players,rttMs:p.rtt}),{binary:true});
+    }
+  }
+}
+const http=createServer((_req,res)=>{res.writeHead(200,{'content-type':'text/plain'});res.end('vortex game server\n');});
+const wss=new WebSocketServer({noServer:true,maxPayload:1024,perMessageDeflate:false});
+const upgradeBudget=new Map<string,{time:number;count:number}>();
+http.on('upgrade',(req,socket,head)=>{
+  const address=req.socket.remoteAddress??'';
+  const now=performance.now(),previous=upgradeBudget.get(address);
+  const b=previous&&now-previous.time<10000?previous:{time:now,count:0};b.count++;upgradeBudget.set(address,b);
+  if(upgradeBudget.size>4096){for(const [ip,v]of upgradeBudget)if(now-v.time>10000)upgradeBudget.delete(ip);}
+  // Edge must rate-limit distinct IPs too; do not trust arbitrary X-Forwarded-For headers here.
+  if(b.count>16||upgradeBudget.size>8192||wss.clients.size>=32||req.url!=='/play'||!origins.has(req.headers.origin??'')){
+    socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');return;
+  }
+  wss.handleUpgrade(req,socket,head,ws=>wss.emit('connection',ws));
+});
+wss.on('connection',ws=>{
+  let peer:Peer|undefined;
+  const timeout=setTimeout(()=>ws.close(1008,'Authentication timeout'),3000);
+  ws.on('error',()=>{});
+  ws.on('message',(raw,binary)=>{
+    try{
+      if(!peer){
+        if(binary)throw new Error('Auth first');
+        const auth=JSON.parse(raw.toString());
+        if(auth.version!==1||auth.map!==MAP_VERSION||peers.size>=16||nextId>65535)throw new Error('Build/capacity mismatch');
+        let sub:string;
+        if(dev)sub=`local-${nextId}`;
+        else{
+          const claims=verifyTicket(auth.ticket,match,secret);
+          if(redeemed.has(claims.jti)||subjects.has(claims.sub))throw new Error('Replay');
+          for(const [key,expiry]of redeemed)if(expiry<Date.now()/1000)redeemed.delete(key);
+          redeemed.set(claims.jti,claims.exp);sub=claims.sub;
+        }
+        const id=nextId++,now=performance.now();
+        peer={id,sub,ws,motor:new RapierMotor(world,initialState(id*2-8,1,10),handles),queue:[],head:0,
+          received:0,ack:0,last:{seq:0,yaw:0,pitch:0,buttons:0,weapon:0,phase:0},epoch:0,health:100,hits:0,
+          nextShot:tick,shotIndex:0,ammo:WEAPONS.map(w=>w.ammo),rtt:0,rttSamples:[],nonce:null,pingTime:0,
+          authTime:now,budget:16,budgetTime:now,lastPacket:now};
+        subjects.add(sub);peers.set(id,peer);clearTimeout(timeout);return;
+      }
+      if(!binary)throw new Error('Binary input required');
+      const bytes=Buffer.isBuffer(raw)?raw:Buffer.concat(raw as Buffer[]),batch=decodeBatch(bytes),now=performance.now();
+      peer.budget=Math.min(16,peer.budget+(now-peer.budgetTime)*TICK_HZ/1000);peer.budgetTime=now;
+      if(batch.length>peer.budget || peer.queue.length-peer.head+batch.length>16)throw new Error('Input flood');
+      for(const input of batch){
+        if(input.seq!==((peer.received+1)>>>0))throw new Error('Input sequence');
+        peer.received=input.seq;peer.queue.push({input,receiptTick:tick});
+      }
+      peer.budget-=batch.length;peer.lastPacket=now;
+    }catch{ws.close(1008,'Invalid command');}
+  });
+  ws.on('pong',data=>{
+    if(!peer||!peer.nonce||!data.equals(peer.nonce))return;
+    const rtt=performance.now()-peer.pingTime;peer.nonce=null;
+    peer.rttSamples.push(rtt);if(peer.rttSamples.length>16)peer.rttSamples.shift();
+    // Lower quartile reduces a client's ability to buy extra rewind with selectively delayed pongs.
+    const sorted=[...peer.rttSamples].sort((a,b)=>a-b);peer.rtt=sorted[Math.floor(sorted.length/4)];
+  });
+  ws.on('close',()=>{clearTimeout(timeout);if(peer){peers.delete(peer.id);subjects.delete(peer.sub);peer.motor.dispose();}});
+});
+await new Promise<void>(resolve=>http.listen(port,host,resolve));
+await lifecycle.ready();
+console.log(`Vortex ${dev?'LOCAL DEVELOPMENT':'authenticated'} on ${host}:${port}, ${TICK_HZ} Hz`);
+const pingTimer=setInterval(()=>{
+  for(const p of peers.values()){
+    if(p.nonce){p.ws.close(1001,'Heartbeat timeout');continue;}
+    p.nonce=randomBytes(8);p.pingTime=performance.now();p.ws.ping(p.nonce);
+  }
+},1000);
+let deadline=performance.now()+DT*1000,timer:ReturnType<typeof setTimeout>;
+function pump():void {
+  if(!running)return;
+  const now=performance.now();let steps=0;
+  while(now>=deadline && steps<4){fixedTick();deadline+=DT*1000;steps++;}
+  // Never drop simulation time or spiral into an unbounded catch-up. Terminate an unhealthy match.
+  if(now-deadline>250){console.error('Tick deadline missed >250ms');void shutdown(1);return;}
+  timer=setTimeout(pump,Math.max(0,deadline-performance.now()));
+}
+timer=setTimeout(pump,DT*1000);
+async function shutdown(code=0):Promise<void>{
+  if(!running)return;running=false;clearTimeout(timer);clearInterval(pingTimer);
+  for(const p of peers.values())p.ws.terminate();http.close();wss.close();
+  await lifecycle.shutdown().catch(console.error);world.free();process.exit(code);
+}
+process.on('SIGTERM',()=>void shutdown());process.on('SIGINT',()=>void shutdown());
