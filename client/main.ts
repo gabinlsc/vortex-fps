@@ -157,8 +157,10 @@ function frame(now:number):void{
   if(ws?.readyState===WebSocket.OPEN&&self){
     const me=latest?.players.find(p=>p.id===self);
     while(accumulator>=DT){
+      // Bound prediction work and yield to network tasks instead of disconnecting.
+      if(predictor.pending.length>=64){accumulator=0;if(send.length){ws.send(encodeBatch(send));send=[];}break;}
       const input=canonical({seq:seq=(seq+1)>>>0,yaw,pitch,buttons:me&&me.health>0?(buttons|edgeButtons):0,weapon,phase:0});
-      try{predictor.predict(input);}catch{ws.close(1000,'Prediction backlog');return;}
+      try{predictor.predict(input);}catch(err){console.error('Vortex prediction failed',String(err),JSON.stringify({pending:predictor.pending.length,seq,ack:me?.ack}));ws.close(1000,'Simulation error');return;}
       edgeButtons=0;send.push(input);accumulator-=DT;
       if(send.length>=2){if(ws.bufferedAmount>16384){ws.close(1000,'Input backlog');return;}ws.send(encodeBatch(send));send=[];}
     }
@@ -174,7 +176,7 @@ function frame(now:number):void{
   viewWeapon.update(elapsed,now/1000,Math.hypot(motor.state.v.x,motor.state.v.z),Boolean(buttons&Button.Fire)&&Boolean(me&&me.health>0&&(me.magazines?.[weapon]??0)>0&&!me.reloadLeft),weapon,active);
   if(document.hidden)return;
   renderer.render(scene,camera);if(active&&me&&me.health>0)viewWeapon.render(renderer);else if(!self)showroom.render(renderer,now/1000,character,weapon);
-  frames++;if(now-fpsTime>=500){fps=Math.round(frames*1000/(now-fpsTime));frames=0;fpsTime=now;element('performance').textContent=fps+' FPS · '+(latest?.rttMs??0).toFixed(0)+' ms';}
+  frames++;if(now-fpsTime>=500){fps=Math.round(frames*1000/(now-fpsTime));frames=0;fpsTime=now;element('performance').textContent=fps+' FPS · '+(latest?.rttMs??0).toFixed(0)+' ms'+(predictor.pending.length>=64?' · SYNCHRONISATION':'');}
 }
 let send:Input[]=[];
 async function boot():Promise<void>{

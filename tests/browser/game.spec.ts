@@ -18,7 +18,7 @@ test('textured lobby, multiplayer roster, inventory reload and team lobby',async
     await page.locator('#nickname').fill('Test Alpha');peer=await otherPlayer('ffa');await page.locator('#join').click();
     await expect(page.locator('body')).toHaveClass(/connected/);await expect(page.locator('body')).toHaveClass(/playing/);
     await expect(page.locator('#players-count')).toHaveText('2 JOUEURS');
-    console.log('CONTROL_FOCUS',await page.evaluate(()=>({active:document.activeElement?.tagName,locked:document.pointerLockElement?.id})));await page.keyboard.down('Tab');await expect(page.locator('#scoreboard')).toBeVisible();
+    console.log('CONTROL_FOCUS',await page.evaluate(()=>({active:document.activeElement?.tagName,locked:document.pointerLockElement?.id})));await expect(page.locator('body')).toHaveClass(/connected/);await page.keyboard.down('Tab');await expect(page.locator('#scoreboard')).toBeVisible();
     await expect(page.locator('#score-rows')).toContainText('Test Alpha');await expect(page.locator('#score-rows')).toContainText('Test Bravo');
     await page.screenshot({path:'test-results/scoreboard.png'});await page.keyboard.up('Tab');
     await expect(page.locator('#protection')).toBeHidden();
