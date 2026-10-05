@@ -2,8 +2,10 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { Button, DT, type Input } from './input.ts';
 import { MOVE, copyState, integrateVelocity, clipVelocity, type MotionState } from './movement.ts';
 import { BOXES } from './map.ts';
+let rapierReady:Promise<void>|undefined;
 export async function createArena():Promise<RAPIER.World> {
-  await RAPIER.init();
+  rapierReady??=RAPIER.init();
+  await rapierReady;
   const world=new RAPIER.World({x:0,y:0,z:0}); world.timestep=DT;
   for (const box of BOXES) {
   world.createCollider(
