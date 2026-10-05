@@ -22,7 +22,7 @@ export function buildArena(scene:THREE.Scene):void {
   const shells=new THREE.InstancedMesh(cube,metal,BOXES.length);
   const pose=new THREE.Object3D();
   BOXES.forEach((b,i)=>{
-    pose.position.set(...b.p);pose.scale.set(b.h[0]*2,b.h[1]*2,b.h[2]*2);pose.updateMatrix();
+    pose.position.set(b.p[0],b.p[1],b.p[2]);pose.scale.set(b.h[0]*2,b.h[1]*2,b.h[2]*2);pose.updateMatrix();
     shells.setMatrixAt(i,pose.matrix);shells.setColorAt(i,new THREE.Color(i===0?0x172430:i<5?0x263443:0x425567));
     if(i>=5){
       box(scene,cyan,b.p[0],b.p[1]+b.h[1]+0.004,b.p[2],b.h[0]*1.9,0.006,0.09);
