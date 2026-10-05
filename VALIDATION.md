@@ -43,3 +43,10 @@ du buffer Ready. Employer des bots réellement connectés, pas uniquement des ap
 - Recul et flamme cosmétiques séparés de la simulation et du rejeu.
 - Installation npm refusée par le réseau de la session. Compilation et rendu WebGL non vérifiés ici.
 - CI ajoutée pour génération Prisma, tests autonomes, intégration et build. Elle doit passer après publication.
+
+## Arsenal et Helix
+
+22 tests autonomes passent, dont validation stricte des cosmétiques, dégagement des
+spawns et symétrie de la carte. Le test d'intégration FlatBuffers a été étendu au pilote,
+mais n'a pas été exécuté ici faute de dépendances. Les contrôles de syntaxe Node passent
+sur les fichiers client, serveur et visuels ; ils ne remplacent pas le typecheck ou la QA WebGL.

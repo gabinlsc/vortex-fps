@@ -2,7 +2,7 @@ namespace Vortex;
 table Player {
   id:ushort; ack:uint; x:float; y:float; z:float; vx:float; vy:float; vz:float;
   flags:ubyte; slideTicks:ushort; lastButtons:ubyte; yaw:float; pitch:float;
-  health:ushort; epoch:uint; hits:uint;
+  health:ushort; epoch:uint; hits:uint; character:ubyte;
 }
 table Snapshot { tick:uint; time:double; self:ushort; players:[Player]; rttMs:float; }
 root_type Snapshot;

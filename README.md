@@ -97,3 +97,21 @@ Les tests autonomes couvrent la sérialisation, les accélérations, les interse
 les tickets, la réconciliation et la sélection régionale. Les tests d'intégration Rapier et
 FlatBuffers nécessitent les dépendances npm. Les budgets 144 FPS / 128 Hz doivent être mesurés
 sur des machines et réseaux représentatifs, avec pertes, jitter, backpressure et charge.
+
+## Arsenal, pilotes et Helix
+
+Le lobby propose Rail (hitscan) et Pulse (projectile), sélectionnables par carte, touches 1/2
+ou molette en jeu. Les silhouettes 3D et cadences visuelles sont distinctes.
+Spectre, Ember et Prism sont trois pilotes cosmétiques : même capsule, vitesse et santé.
+Le serveur valide le pilote à l'admission et le réplique dans les snapshots ; le choix est
+verrouillé pendant la session. Les préférences sont mémorisées localement.
+
+Un aperçu 3D du pilote et de l'arme apparaît sur les écrans d'au moins 900 px.
+Helix remplace le blockout : couvert symétrique par rotation, plateforme centrale,
+plateformes latérales et marches à franchir par sauts. Le marquage nord/sud cyan/orange
+aide à se repérer. Les collisions utilisent exactement la même carte côté client et serveur.
+Les points d'apparition sont fixes et validés hors des solides ; ils ne sélectionnent pas
+encore dynamiquement la zone la plus sûre vis-à-vis des adversaires.
+
+Validation : 22 tests autonomes passent ; syntaxe TypeScript vérifiée par Node.
+Le typecheck complet, les tests Rapier/FlatBuffers et le rendu restent à lancer après installation npm.

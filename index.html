@@ -2,10 +2,12 @@
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#07121d"><title>Vortex — Movement FPS</title></head>
 <body><canvas id="scene" aria-label="Arène 3D Vortex"></canvas><div id="crosshair" aria-hidden="true">+</div>
 <section id="menu"><span class="eyebrow">MULTIPLAYER MOVEMENT FPS / ALPHA 01</span><h1>VORTEX<span class="title-dot">.</span></h1>
-<p class="tagline">Prends de la vitesse.<br>Garde le contrôle.</p>
+<p class="tagline">Ton pilote. Ton arsenal.<br>Ta prochaine arène.</p>
 <div class="specs"><span>128 Hz <small>SIMULATION</small></span><span>3D <small>WEBGL</small></span><span>EU / US <small>CIBLE RÉGIONALE</small></span></div>
-<p>Arène multijoueur de validation. Lance le serveur local puis ouvre deux onglets pour rejoindre le même match.</p>
+<div class="loadout-heading"><span>01 / ARSENAL</span><small>1 · 2 · MOLETTE</small></div><div id="weapon-options" class="selection-grid"></div>
+<div class="loadout-heading"><span>02 / PILOTE</span><small>COSMÉTIQUE</small></div><div id="character-options" class="selection-grid characters"></div><p id="character-description" class="selection-description"></p>
+<div class="map-card"><span class="map-badge">H</span><div><b>HELIX</b><small>3 voies · plateformes · arène symétrique</small></div><span class="live-dot"></span></div>
 <label>Ticket de match <input id="ticket" type="password" placeholder="Vide en développement local" autocomplete="off"></label>
 <button id="join">Entrer dans l’arène <span aria-hidden="true">↗</span></button><p class="controls">ZQSD / WASD · Espace : saut · Shift : slide<br>Clic : tirer · 1 : rail · 2 : pulse · Échap : menu</p>
-</section><aside id="hud"><b>VORTEX <small>ARENA / 01</small></b><span id="stats">Connexion requise</span></aside><p id="status" role="status"></p>
+</section><div id="showroom-caption"><span>LOADOUT / LIVE PREVIEW</span><h2 id="pilot-name">SPECTRE</h2><p>Aucun bonus de dégâts ou de vitesse.</p></div><div id="weapon-hud"></div><aside id="hud"><b>VORTEX <small>ARENA / 01</small></b><span id="stats">Connexion requise</span></aside><p id="status" role="status"></p>
 <script type="module" src="/client/main.ts"></script></body></html>

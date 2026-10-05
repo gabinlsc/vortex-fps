@@ -20,6 +20,6 @@ test('same WASM simulation and restored replay produce matching positions',async
 });
 test('FlatBuffers snapshot carries all movement state and ACK',()=>{
   const state=initialState(1,2,3);state.crouched=true;state.slideTicks=12;state.lastButtons=32;
-  const source={tick:65536,time:512,self:2,rttMs:20,players:[{id:2,ack:0xffffffff,state,yaw:1,pitch:0,health:75,epoch:4,hits:2}]};
+  const source={tick:65536,time:512,self:2,rttMs:20,players:[{id:2,ack:0xffffffff,state,yaw:1,pitch:0,health:75,epoch:4,hits:2,character:2}]};
   assert.deepEqual(decodeSnapshot(encodeSnapshot(source)),source);
 });

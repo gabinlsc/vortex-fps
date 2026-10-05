@@ -112,3 +112,19 @@ test('interpolation brackets time and does not sweep through an epoch change',()
   close(interpolate.sample(2,1.5)!.state.p.x,5);
   interpolate.add({tick:3,time:3,self:1,players:[player(s0,1)],rttMs:0});close(interpolate.sample(2,2.5)!.state.p.x,10);
 });
+
+
+test('character admission rejects unknown cosmetics and non-integer payloads',async()=>{
+  const {validateCharacter,CHARACTERS}=await import('../shared/characters.ts');
+  for(let i=0;i<CHARACTERS.length;i++)assert.equal(validateCharacter(i),i);
+  for(const value of [-1,3,1.5,'1',null,NaN,Infinity,{},true])assert.throws(()=>validateCharacter(value));
+});
+test('Helix spawn capsules are clear of solid cover and map has rotational symmetry',async()=>{
+  const {BOXES,SPAWNS,MAP_VERSION}=await import('../shared/map.ts');
+  assert.equal(MAP_VERSION,'helix-arena-2');
+  for(const [x,y,z] of SPAWNS)for(const b of BOXES){
+    const overlaps=Math.abs(x-b.p[0])<b.h[0]+MOVE.radius&&Math.abs(y-b.p[1])<b.h[1]+MOVE.standHalf+MOVE.radius&&Math.abs(z-b.p[2])<b.h[2]+MOVE.radius;
+    assert.equal(overlaps,false,'spawn intersects static solid');
+  }
+  for(const b of BOXES)assert.ok(BOXES.some(other=>other.p[0]===-b.p[0]&&other.p[1]===b.p[1]&&other.p[2]===-b.p[2]&&other.h.every((v,i)=>v===b.h[i])));
+});

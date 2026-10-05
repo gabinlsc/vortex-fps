@@ -5,9 +5,10 @@ import {createArena,RapierMotor,eye} from '../shared/physics.ts';
 import {initialState,copyState} from '../shared/movement.ts';
 import {Button,DT,TICK_HZ,decodeBatch,type Input} from '../shared/input.ts';
 import {encodeSnapshot,type PlayerSnapshot} from '../shared/snapshot.ts';
-import {BOXES,MAP_VERSION} from '../shared/map.ts';
+import {BOXES,MAP_VERSION,SPAWNS} from '../shared/map.ts';
 import {WEAPONS,recoil,projectileStep,type Projectile} from '../shared/gunplay.ts';
 import {History,bodyHitbox,direction,rewindTime,castHistorical,rayBox} from './lag-compensation.ts';
+import {validateCharacter} from '../shared/characters.ts';
 import {verifyTicket} from './tickets.ts';
 import {AgonesLifecycle} from './agones.ts';
 
@@ -20,7 +21,7 @@ const world=await createArena(),handles=new Set<number>(),history=new History(32
 let tick=0,nextId=1,running=true;
 interface Queued {input:Input;receiptTick:number}
 interface Peer {
-  id:number;sub:string;ws:WebSocket;motor:RapierMotor;queue:Queued[];head:number;
+  id:number;character:number;sub:string;ws:WebSocket;motor:RapierMotor;queue:Queued[];head:number;
   received:number;ack:number;last:Input;epoch:number;health:number;hits:number;nextShot:number;shotIndex:number;
   ammo:number[];rtt:number;rttSamples:number[];nonce:Buffer|null;pingTime:number;authTime:number;
   budget:number;budgetTime:number;lastPacket:number;
@@ -36,7 +37,7 @@ function damage(id:number,epoch:number,amount:number,owner:Peer):void {
   if(target.health<=0){
     target.epoch++;target.health=100;target.shotIndex=0;target.ammo=WEAPONS.map(w=>w.ammo);
     target.nextShot=tick+TICK_HZ;target.last={...target.last,buttons:0};
-    target.motor.restore(initialState((target.id%4)*3-5,1,(target.epoch%3)*4-4));
+    target.motor.restore(initialState(...SPAWNS[(target.id+target.epoch)%SPAWNS.length]));
   }
 }
 function shoot(p:Peer,queued:Queued|undefined):void {
@@ -79,7 +80,7 @@ function fixedTick():void {
   }
   if(tick%4===0){ // 32 snapshots/s independent from 128 physics ticks/s
     const players:PlayerSnapshot[]=[...peers.values()].map(p=>({id:p.id,ack:p.ack,state:copyState(p.motor.state),
-      yaw:p.last.yaw,pitch:p.last.pitch,health:p.health,epoch:p.epoch,hits:p.hits}));
+      yaw:p.last.yaw,pitch:p.last.pitch,health:p.health,epoch:p.epoch,hits:p.hits,character:p.character}));
     for(const p of peers.values()){
       if(p.ws.bufferedAmount>64*1024){p.ws.close(1013,'Slow consumer');continue;}
       p.ws.send(encodeSnapshot({tick,time:tick*DT,self:p.id,players,rttMs:p.rtt}),{binary:true});
@@ -109,6 +110,7 @@ wss.on('connection',ws=>{
       if(!peer){
         if(binary)throw new Error('Auth first');
         const auth=JSON.parse(raw.toString());
+        const character=validateCharacter(auth.character??0);
         if(auth.version!==1||auth.map!==MAP_VERSION||peers.size>=16||nextId>65535)throw new Error('Build/capacity mismatch');
         let sub:string;
         if(dev)sub=`local-${nextId}`;
@@ -119,7 +121,7 @@ wss.on('connection',ws=>{
           redeemed.set(claims.jti,claims.exp);sub=claims.sub;
         }
         const id=nextId++,now=performance.now();
-        peer={id,sub,ws,motor:new RapierMotor(world,initialState(id*2-8,1,10),handles),queue:[],head:0,
+        peer={id,character,sub,ws,motor:new RapierMotor(world,initialState(...SPAWNS[(id-1)%SPAWNS.length]),handles),queue:[],head:0,
           received:0,ack:0,last:{seq:0,yaw:0,pitch:0,buttons:0,weapon:0,phase:0},epoch:0,health:100,hits:0,
           nextShot:tick,shotIndex:0,ammo:WEAPONS.map(w=>w.ammo),rtt:0,rttSamples:[],nonce:null,pingTime:0,
           authTime:now,budget:16,budgetTime:now,lastPacket:now};
