@@ -46,7 +46,8 @@ docker build -f infra/Dockerfile -t vortex:v1 .
 | `shared/snapshot.fbs` et `.ts` | Snapshots FlatBuffers, ACK et état complet du mouvement |
 | `shared/gunplay.ts` | Recul déterministe et intégration de projectiles |
 | `client/netcode.ts` | Prédiction, restauration/rejeu, interpolation et correction visuelle |
-| `client/main.ts` | Blockout Three.js et boucle à pas fixe |
+| `client/main.ts` | Arène Three.js et boucle à pas fixe |
+| `client/visuals.ts` | Décor procédural, avatars et arme en vue subjective |
 | `server/main.ts` | Autorité, cadences, queues bornées, hitscan, projectiles, admission |
 | `server/lag-compensation.ts` | Historique immutable, intersections analytiques, rewind plafonné |
 | `server/tickets.ts` | Tickets HMAC de 30 s avec portée match et protection de rejeu serveur |
@@ -59,8 +60,10 @@ docker build -f infra/Dockerfile -t vortex:v1 .
 
 Déplacements et impacts sont autoritaires. L'arène utilise des boîtes statiques ; les joueurs ne
 se bloquent pas entre eux. Les projectiles ont une collision par segment et un dommage direct.
-Le client affiche les capsules adverses, la santé et les impacts confirmés. Les tracers,
-animations d'armes, feedback de recul visuel et réplication visuelle des projectiles restent à intégrer.
+Le client affiche les avatars adverses, la santé et les impacts confirmés. Le décor sci-fi,
+le panorama animé du menu et les armes procédurales ne nécessitent aucun modèle externe.
+Le recul et la flamme de bouche sont cosmétiques, prédits localement : ils ne confirment pas un tir.
+Les tracers et la réplication visuelle des projectiles restent à intégrer.
 
 L'API offre une queue persistante authentifiée. Le worker qui constitue les groupes, détient les
 leases, alloue, émet les tickets et publie les résultats est spécifié dans `ARCHITECTURE.md` ; il

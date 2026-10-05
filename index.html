@@ -1,9 +1,11 @@
 <!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vortex — Netcode Lab</title></head>
-<body><canvas id="scene"></canvas><div id="crosshair">+</div>
-<section id="menu"><span class="eyebrow">VORTEX / FOUNDATION 01</span><h1>Le mouvement<br>avant tout.</h1>
-<p>Arène de validation réseau. Ouvre deux onglets pour tester le serveur autoritaire.</p>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#07121d"><title>Vortex — Movement FPS</title></head>
+<body><canvas id="scene" aria-label="Arène 3D Vortex"></canvas><div id="crosshair" aria-hidden="true">+</div>
+<section id="menu"><span class="eyebrow">MULTIPLAYER MOVEMENT FPS / ALPHA 01</span><h1>VORTEX<span class="title-dot">.</span></h1>
+<p class="tagline">Prends de la vitesse.<br>Garde le contrôle.</p>
+<div class="specs"><span>128 Hz <small>SIMULATION</small></span><span>3D <small>WEBGL</small></span><span>EU / US <small>CIBLE RÉGIONALE</small></span></div>
+<p>Arène multijoueur de validation. Lance le serveur local puis ouvre deux onglets pour rejoindre le même match.</p>
 <label>Ticket de match <input id="ticket" type="password" placeholder="Vide en développement local" autocomplete="off"></label>
-<button id="join">Entrer dans l’arène ↗</button><p class="controls">ZQSD / WASD · Espace : saut · Shift : slide<br>Clic : tirer · 1 : rail · 2 : projectile · Échap : libérer la souris</p>
-</section><aside id="hud"><b>VORTEX</b><span id="stats">Connexion requise</span></aside><p id="status"></p>
+<button id="join">Entrer dans l’arène <span aria-hidden="true">↗</span></button><p class="controls">ZQSD / WASD · Espace : saut · Shift : slide<br>Clic : tirer · 1 : rail · 2 : pulse · Échap : menu</p>
+</section><aside id="hud"><b>VORTEX <small>ARENA / 01</small></b><span id="stats">Connexion requise</span></aside><p id="status" role="status"></p>
 <script type="module" src="/client/main.ts"></script></body></html>

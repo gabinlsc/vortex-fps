@@ -35,3 +35,11 @@ la répétabilité de deux simulations WASM, la restauration/rejeu et l'ABI Flat
 Mesures de charge : durée du tick p50/p95/p99, dépassements de deadline, pause GC, taille du
 snapshot, débit montant/descendant, queue d'inputs, corrections de position et disponibilité
 du buffer Ready. Employer des bots réellement connectés, pas uniquement des appels directs.
+
+## Ajout graphique — 5 octobre 2026
+
+- 20 tests autonomes relancés : 20 réussites.
+- Décor utilisant les boîtes de collision partagées, avatars et arme procéduraux.
+- Recul et flamme cosmétiques séparés de la simulation et du rejeu.
+- Installation npm refusée par le réseau de la session. Compilation et rendu WebGL non vérifiés ici.
+- CI ajoutée pour génération Prisma, tests autonomes, intégration et build. Elle doit passer après publication.
