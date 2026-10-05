@@ -13,7 +13,7 @@ import {buildArena,createAvatar,animateAvatar,attachName,disposeName,ViewWeapon,
 const element=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id)! as T;
 const canvas=element<HTMLCanvasElement>('scene'),menu=element('menu'),status=element('status');
 let ws:WebSocket|undefined,self=0,seq=0,yaw=0,pitch=0,weapon=0,character=0,mode:GameMode='ffa',buttons=0,latest:Snapshot|undefined;
-let edgeButtons=0;
+let edgeButtons=0,authority:PlayerSnapshot|undefined,hudTime=0;
 let connected=false,accumulator=0,lastFrame=performance.now(),frames=0,fps=0,fpsTime=lastFrame;
 let renderer:THREE.WebGLRenderer,scene:THREE.Scene,camera:THREE.PerspectiveCamera,showroom:Showroom,viewWeapon:ViewWeapon;
 let world:Awaited<ReturnType<typeof createArena>>,motor:RapierMotor,predictor:Predictor,interpolator=new Interpolator(),clock=new RenderClock();
@@ -55,7 +55,7 @@ function requestControl():void {
   try{const request=canvas.requestPointerLock();if(request)void request.catch(()=>{status.textContent='Clique sur Reprendre pour capturer la souris.';});}catch{status.textContent='La capture de la souris nécessite un clic.';}
 }
 function resetSession():void {
-  self=0;connected=false;latest=undefined;seq=0;buttons=0;edgeButtons=0;keys.clear();accumulator=0;
+  self=0;connected=false;latest=undefined;authority=undefined;seq=0;buttons=0;edgeButtons=0;keys.clear();accumulator=0;
   for(const mesh of enemies.values()){disposeName(mesh);scene?.remove(mesh);}enemies.clear();
   document.body.classList.remove('connected','playing');element('scoreboard').hidden=true;
   if(document.pointerLockElement===canvas)document.exitPointerLock();
@@ -139,9 +139,9 @@ element<HTMLFormElement>('lobby').onsubmit=e=>{
       }
       if(!(e.data instanceof ArrayBuffer))throw new Error('Invalid server frame');
       const s=decodeSnapshot(new Uint8Array(e.data)),me=s.players.find(p=>p.id===s.self);if(!me)throw new Error('Missing local authority');
-      latest=s;self=s.self;clock.observe(s.time,performance.now()/1000,s.rttMs);interpolator.add(s);predictor.reconcile(me);
+      latest=s;self=s.self;clock.observe(s.time,performance.now()/1000,s.rttMs);interpolator.add(s);authority=me;
       if(!connected){connected=true;seq=me.ack;character=me.character??0;yaw=Math.atan2(me.state.p.x,me.state.p.z);pitch=0;refreshLoadout();join.disabled=false;status.textContent='Partie prête. Clique sur Reprendre si la souris est libre.';}
-      document.body.classList.add('connected');hud(s,me);
+      document.body.classList.add('connected');
       const ids=new Set(s.players.filter(p=>p.id!==self).map(p=>p.id));
       for(const [id,mesh]of enemies)if(!ids.has(id)){disposeName(mesh);scene.remove(mesh);enemies.delete(id);}
       for(const p of s.players)if(p.id!==self&&!enemies.has(p.id)){const mesh=createAvatar(p.character??0);attachName(mesh,p.name??'Pilote',p.team??0);scene.add(mesh);enemies.set(p.id,mesh);}
@@ -152,10 +152,13 @@ element<HTMLFormElement>('lobby').onsubmit=e=>{
 };
 addEventListener('resize',()=>{if(!renderer)return;renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();viewWeapon.resize(camera.aspect);});
 function frame(now:number):void{
-  requestAnimationFrame(frame);const elapsed=Math.min((now-lastFrame)/1000,0.05);lastFrame=now;
+  requestAnimationFrame(frame);const started=performance.now();const elapsed=Math.min((now-lastFrame)/1000,0.05);lastFrame=now;
   accumulator+=elapsed;
   if(ws?.readyState===WebSocket.OPEN&&self){
     const me=latest?.players.find(p=>p.id===self);
+    // Coalesce network bursts: restore/replay only the newest authority each frame.
+    if(authority){predictor.reconcile(authority);authority=undefined;}
+    if(latest&&me&&now-hudTime>=100){hud(latest,me);hudTime=now;}
     while(accumulator>=DT){
       // Bound prediction work and yield to network tasks instead of disconnecting.
       if(predictor.pending.length>=64){accumulator=0;if(send.length){ws.send(encodeBatch(send));send=[];}break;}
@@ -176,6 +179,7 @@ function frame(now:number):void{
   viewWeapon.update(elapsed,now/1000,Math.hypot(motor.state.v.x,motor.state.v.z),Boolean(buttons&Button.Fire)&&Boolean(me&&me.health>0&&(me.magazines?.[weapon]??0)>0&&!me.reloadLeft),weapon,active);
   if(document.hidden)return;
   renderer.render(scene,camera);if(active&&me&&me.health>0)viewWeapon.render(renderer);else if(!self)showroom.render(renderer,now/1000,character,weapon);
+  if(performance.now()-started>1000)console.warn('Vortex slow frame',Math.round(performance.now()-started),predictor.pending.length);
   frames++;if(now-fpsTime>=500){fps=Math.round(frames*1000/(now-fpsTime));frames=0;fpsTime=now;element('performance').textContent=fps+' FPS · '+(latest?.rttMs??0).toFixed(0)+' ms'+(predictor.pending.length>=64?' · SYNCHRONISATION':'');}
 }
 let send:Input[]=[];
