@@ -1,6 +1,6 @@
 {
   "name": "vortex-fps",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -17,7 +17,8 @@
     "api": "tsx api/main.ts",
     "prisma:generate": "prisma generate --schema api/schema.prisma",
     "preview": "vite preview",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "play": "node scripts/play.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.3",

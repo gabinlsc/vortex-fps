@@ -119,9 +119,9 @@ test('character admission rejects unknown cosmetics and non-integer payloads',as
   for(let i=0;i<CHARACTERS.length;i++)assert.equal(validateCharacter(i),i);
   for(const value of [-1,3,1.5,'1',null,NaN,Infinity,{},true])assert.throws(()=>validateCharacter(value));
 });
-test('Helix spawn capsules are clear of solid cover and map has rotational symmetry',async()=>{
+test('Rift spawn capsules are clear of solid cover and map has rotational symmetry',async()=>{
   const {BOXES,SPAWNS,MAP_VERSION}=await import('../shared/map.ts');
-  assert.equal(MAP_VERSION,'rift-outpost-3');
+  assert.equal(MAP_VERSION,'rift-outpost-4');
   for(const [x,y,z] of SPAWNS)for(const b of BOXES){
     const overlaps=Math.abs(x-b.p[0])<b.h[0]+MOVE.radius&&Math.abs(y-b.p[1])<b.h[1]+MOVE.standHalf+MOVE.radius&&Math.abs(z-b.p[2])<b.h[2]+MOVE.radius;
     assert.equal(overlaps,false,'spawn intersects static solid');
@@ -170,4 +170,24 @@ test('combat awards a kill and recent damage assist once, ignores stale epochs a
   victim.protectedUntil=300;assert.equal(applyHit(victim,a,2,100,250,players),'ignored');
   victim.protectedUntil=0;applyHit(victim,helper,2,35,300,players);applyHit(victim,a,2,100,2000,players);
   assert.equal(helper.assists,1);
+});
+
+test('confirmed shots are deduplicated across snapshots, joining and respawns',async()=>{
+  const {ShotTracker}=await import('../client/shot-tracker.ts'),tracker=new ShotTracker();
+  const player=(index:number,epoch=0)=>({id:1,ack:0,state:initialState(),yaw:0,pitch:0,health:100,epoch,hits:0,shotIndex:index});
+  assert.deepEqual(tracker.observe([player(12)]),[]);
+  assert.equal(tracker.observe([player(13)]).length,1);
+  assert.deepEqual(tracker.observe([player(13)]),[]);
+  assert.deepEqual(tracker.observe([player(0,1)]),[]);
+  assert.equal(tracker.observe([player(1,1)]).length,1);
+  tracker.observe([]);assert.deepEqual(tracker.observe([player(9,1)]),[]);
+  tracker.clear();assert.deepEqual(tracker.observe([player(10,1)]),[]);
+});
+
+test('saved comfort settings tolerate corrupt values and bound render controls',async()=>{
+  const {normalizeSettings,DEFAULT_SETTINGS}=await import('../client/settings.ts');
+  assert.deepEqual(normalizeSettings(null),DEFAULT_SETTINGS);
+  assert.deepEqual(normalizeSettings({fov:NaN,sensitivity:'fast',volume:Infinity,quality:'ultra'}),DEFAULT_SETTINGS);
+  const clamped=normalizeSettings({fov:500,sensitivity:-2,volume:125,quality:'low',effects:false,reducedMotion:true});
+  assert.deepEqual(clamped,{fov:110,sensitivity:0.3,volume:100,quality:'low',effects:false,reducedMotion:true});
 });

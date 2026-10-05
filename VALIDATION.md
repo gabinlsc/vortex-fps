@@ -1,11 +1,18 @@
-# Validation Vortex 0.3
+# Validation Vortex 0.4
 
-La refonte a passé le workflow [37295739333](https://github.com/gabinlsc/vortex-fps/actions/runs/37295739333) sur db42526 : 26 tests purs, 5 tests d'intégration/réseau, build TypeScript/Vite et 1 scénario Chromium/WebGL.
+Validation locale Windows / Node.js 24.19.0, le 5 octobre 2026 :
 
-Les tests vérifient la simulation Rapier et son replay, la stabilité des douze spawns, les règles de combat et d'assistance, les chargeurs/rechargements, les pseudos et l'isolation FFA/TDM avec un serveur WebSocket réel.
+- 28 tests unitaires : mouvement, codecs, combat, symétrie et spawns, compteur de tirs, validation des réglages.
+- 6 tests d'intégration et réseau : replay Rapier, snapshots, stabilité des spawns, accès aux deux parcours de toit, serveur réel, isolation FFA/TDM et chargeurs.
+- Build TypeScript, Vite et serveur esbuild.
+- 2 scénarios Chromium / WebGL logiciel : partie multijoueur, classement, changement d'arme, tir, rechargement, changement de salon ; réglages persistants et interface sur écran 390 × 844.
 
-Le scénario navigateur lance une partie avec un second joueur réseau, ouvre le classement, change d'arme, tire, recharge, quitte et rejoint un salon en équipe. La prédiction coalesce les snapshots avant le replay et borne les commandes en attente pour conserver une session réactive.
+Les captures dans `test-results/` sont examinées pour vérifier le lobby, le HUD, l'arène et les réglages mobiles. La CI les conserve dans vortex-browser-review.
 
-Les captures lobby.jpg, spawn.jpg, scoreboard.png et arena.jpg sont collectées dans l'artefact vortex-browser-review. Les résultats du dernier commit restent consultables dans son workflow.
+Les nouveaux parcours sont traversés avec le contrôleur physique réel en maintenant déplacement et saut. Le test couvre les deux côtés symétriques. Le serveur utilise exactement les mêmes solides que le rendu et la prédiction.
 
-L'exécution complète a lieu sur le runner GitHub ; le terminal local de cette session est indisponible. La CI valide le fonctionnement, sans constituer un benchmark de FPS sur matériel joueur ni une qualification sous charge.
+Les effets de tir sont cosmétiques, reconstruits depuis les snapshots existants ; voir README pour leurs limites de synchronisation. Les marqueurs de touche suivent les hits confirmés. Les scénarios navigateur ne mesurent pas la fidélité balistique des traînées.
+
+Le rendu groupe les solides en quatre meshes avec UV à échelle constante et trois groupes de contours instanciés. Les effets utilisent des pools bornés. Cela ne constitue pas un benchmark matériel à 144 FPS ni une qualification de charge à 16 joueurs.
+
+L'API de matchmaking, OIDC et l'infrastructure de publication gardent leur périmètre décrit dans ARCHITECTURE.md.

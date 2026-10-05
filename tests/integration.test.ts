@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createArena,RapierMotor} from '../shared/physics.ts';
 import {initialState,copyState} from '../shared/movement.ts';
@@ -20,7 +20,7 @@ test('same WASM simulation and restored replay produce matching positions',async
 });
 test('FlatBuffers snapshot carries all movement state and ACK',()=>{
   const state=initialState(1,2,3);state.crouched=true;state.slideTicks=12;state.lastButtons=32;
-  const source={tick:65536,time:512,self:2,rttMs:20,mode:1,score1:8,score2:5,remaining:123,players:[{id:2,ack:0xffffffff,state,yaw:1,pitch:0,health:75,epoch:4,hits:2,character:2,name:'Émilie',team:2,kills:3,assists:2,deaths:1,weapon:1,magazines:[4,17],reloadWeapon:1,reloadLeft:42,respawnLeft:0,protectedLeft:12,shotIndex:9}]};
+  const source={tick:65536,time:512,self:2,rttMs:20,mode:1,score1:8,score2:5,remaining:123,players:[{id:2,ack:0xffffffff,state,yaw:1,pitch:0,health:75,epoch:4,hits:2,character:2,name:'Ã‰milie',team:2,kills:3,assists:2,deaths:1,weapon:1,magazines:[4,17],reloadWeapon:1,reloadLeft:42,respawnLeft:0,protectedLeft:12,shotIndex:9}]};
   assert.deepEqual(decodeSnapshot(encodeSnapshot(source)),source);
 });
 
@@ -49,4 +49,18 @@ test('new arena creation cannot corrupt an existing WASM world',async()=>{
       a.tick(input);first.step();b.tick(input);baseline.step();assert.deepEqual(a.state,b.state);
     }
   }finally{a.dispose();b.dispose();first.free();baseline.free();another.free();}
+});
+
+test('both mirrored jump routes reach the reactor roof with the actual character motor',async()=>{
+  for(const sign of [-1,1]){
+    const world=await createArena(),motor=new RapierMotor(world,initialState(27*sign,1.05,0),new Set());
+    let reached=false;
+    try{
+      for(let seq=1;seq<=2600;seq++){
+        motor.tick(canonical({seq,yaw:sign*Math.PI/2,pitch:0,buttons:Button.Forward|Button.Jump,weapon:0,phase:0}));world.step();
+        const p=motor.state.p;if(Math.abs(p.x)<10.3&&p.y>7.8){reached=true;break;}
+      }
+      assert.ok(reached,`roof jump route ${sign} is unreachable: ${JSON.stringify(motor.state.p)}`);
+    }finally{motor.dispose();world.free();}
+  }
 });

@@ -3,3 +3,5 @@ dist/
 dist-server/
 .env
 *.log
+test-results/
+playwright-report/
