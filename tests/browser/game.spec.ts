@@ -22,6 +22,7 @@ test('textured lobby, multiplayer roster, inventory reload and team lobby',async
     await expect(page.locator('#score-rows')).toContainText('Test Alpha');await expect(page.locator('#score-rows')).toContainText('Test Bravo');
     await page.screenshot({path:'test-results/scoreboard.png'});await page.keyboard.up('Tab');
     await expect(page.locator('#protection')).toBeHidden();
+    const spawn=await page.screenshot({path:'test-results/spawn.jpg',type:'jpeg',quality:55});console.log('VORTEX_SPAWN_IMAGE:'+spawn.toString('base64'));
     await page.keyboard.press('Digit2');await expect(page.locator('#weapon-name')).toHaveText('PULSE');
     await page.mouse.down();await expect.poll(async()=>Number(await page.locator('#ammo').textContent())).toBeLessThan(24);await page.mouse.up();
     await page.keyboard.press('KeyR');await expect(page.locator('#reload-status')).toContainText('RECHARGEMENT');

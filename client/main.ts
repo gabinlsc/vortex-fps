@@ -13,6 +13,7 @@ import {buildArena,createAvatar,animateAvatar,attachName,disposeName,ViewWeapon,
 const element=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id)! as T;
 const canvas=element<HTMLCanvasElement>('scene'),menu=element('menu'),status=element('status');
 let ws:WebSocket|undefined,self=0,seq=0,yaw=0,pitch=0,weapon=0,character=0,mode:GameMode='ffa',buttons=0,latest:Snapshot|undefined;
+let ignoreLook=true;
 let edgeButtons=0,authority:PlayerSnapshot|undefined,hudTime=0;
 let connected=false,accumulator=0,lastFrame=performance.now(),frames=0,fps=0,fpsTime=lastFrame;
 let renderer:THREE.WebGLRenderer,scene:THREE.Scene,camera:THREE.PerspectiveCamera,showroom:Showroom,viewWeapon:ViewWeapon;
@@ -62,7 +63,7 @@ function resetSession():void {
   menu.hidden=false;join.disabled=false;refreshLoadout();
 }
 element('leave').addEventListener('click',()=>{const old=ws;ws=undefined;old?.close(1000,'Left match');resetSession();status.textContent='Prêt pour une nouvelle partie.';});
-document.addEventListener('pointerlockchange',()=>{const active=document.pointerLockElement===canvas;menu.hidden=active;keys.clear();buttons=0;edgeButtons=0;});
+document.addEventListener('pointerlockchange',()=>{const active=document.pointerLockElement===canvas;menu.hidden=active;ignoreLook=true;keys.clear();buttons=0;edgeButtons=0;});
 function updateButtons():void {
   buttons=Number(keys.has('KeyW')||keys.has('KeyZ'))*Button.Forward|Number(keys.has('KeyS'))*Button.Back|
     Number(keys.has('KeyA')||keys.has('KeyQ'))*Button.Left|Number(keys.has('KeyD'))*Button.Right|
@@ -80,7 +81,7 @@ addEventListener('keyup',e=>{keys.delete(e.code);if(e.code==='Tab')element('scor
 element('open-scores').onclick=()=>{element('scoreboard').hidden=false;};
 element('close-scores').onclick=()=>{element('scoreboard').hidden=true;};
 addEventListener('blur',()=>{keys.clear();buttons=0;element('scoreboard').hidden=true;});
-addEventListener('mousemove',e=>{if(document.pointerLockElement!==canvas||!self)return;yaw-=e.movementX*0.002;pitch=Math.max(-Math.PI/2,Math.min(Math.PI/2,pitch-e.movementY*0.002));});
+addEventListener('mousemove',e=>{if(document.pointerLockElement!==canvas||!self)return;if(ignoreLook){ignoreLook=false;return;}yaw-=e.movementX*0.002;pitch=Math.max(-Math.PI/2,Math.min(Math.PI/2,pitch-e.movementY*0.002));});
 canvas.addEventListener('wheel',e=>{if(document.pointerLockElement!==canvas||!self)return;e.preventDefault();weapon=1-weapon;refreshLoadout();},{passive:false});
 canvas.addEventListener('mousedown',e=>{if(e.button===0&&document.pointerLockElement===canvas&&self){buttons|=Button.Fire;edgeButtons|=Button.Fire;}});
 addEventListener('mouseup',e=>{if(e.button===0)buttons&=~Button.Fire;});
