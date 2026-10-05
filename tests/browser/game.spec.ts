@@ -2,6 +2,7 @@ import {test,expect} from '@playwright/test';
 import {WebSocket} from 'ws';
 import {MAP_VERSION} from '../../shared/map.ts';
 test('textured lobby, multiplayer roster, inventory reload and team lobby',async({page})=>{
+  page.on('console',message=>{if(message.type()==='warning'||message.type()==='error')console.log('BROWSER_LOG',message.text());});
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   let peer:WebSocket|undefined;
   async function otherPlayer(mode:string){
@@ -32,5 +33,5 @@ test('textured lobby, multiplayer roster, inventory reload and team lobby',async
     await page.keyboard.down('Tab');
     await expect(page.locator('#score-rows')).toContainText('AZURE');await expect(page.locator('#score-rows')).toContainText('EMBER');
     await page.keyboard.up('Tab');expect(errors).toEqual([]);
-  }finally{peer?.terminate();}
+  }finally{console.log('BROWSER_STATE',await page.evaluate(()=>({classes:document.body.className,status:document.getElementById('status')?.textContent,scoreHidden:document.getElementById('scoreboard')?.hidden,lock:document.pointerLockElement?.id,active:document.activeElement?.tagName,players:document.getElementById('players-count')?.textContent})).catch(()=>({closed:true})));peer?.terminate();}
 });

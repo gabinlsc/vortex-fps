@@ -147,7 +147,7 @@ element<HTMLFormElement>('lobby').onsubmit=e=>{
       for(const p of s.players)if(p.id!==self&&!enemies.has(p.id)){const mesh=createAvatar(p.character??0);attachName(mesh,p.name??'Pilote',p.team??0);scene.add(mesh);enemies.set(p.id,mesh);}
     }catch(err){status.textContent=String(err);socket.close(1002,'Protocol mismatch');}
   };
-  socket.onclose=e=>{if(ws!==socket)return;ws=undefined;resetSession();status.textContent=e.code===1000?'Partie quittée.':e.code===1008?'Connexion refusée : pseudo, ticket ou version incompatibles.':'Connexion interrompue ('+e.code+'). Tu peux relancer la partie.';};
+  socket.onclose=e=>{console.warn('Vortex session closed',e.code,e.reason);if(ws!==socket)return;ws=undefined;resetSession();status.textContent=e.code===1000?'Partie quittée.':e.code===1008?'Connexion refusée : pseudo, ticket ou version incompatibles.':'Connexion interrompue ('+e.code+'). Tu peux relancer la partie.';};
   socket.onerror=()=>{status.textContent='Serveur inaccessible. Démarre npm run server:dev puis relance la partie.';};
 };
 addEventListener('resize',()=>{if(!renderer)return;renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();viewWeapon.resize(camera.aspect);});

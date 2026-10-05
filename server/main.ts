@@ -169,7 +169,7 @@ wss.on('connection',ws=>{
         peer.received=input.seq;peer.queue.push({input,receiptTick:tick});
       }
       peer.budget-=batch.length;peer.lastPacket=now;
-    }catch{ws.close(1008,'Invalid command');}
+    }catch(err){console.warn('Rejected command:',err instanceof Error?err.message:'Invalid');ws.close(1008,'Invalid command');}
   });
   ws.on('pong',data=>{
     if(!peer||!peer.nonce||!data.equals(peer.nonce))return;
@@ -185,7 +185,7 @@ await lifecycle.ready();
 console.log(`Vortex ${dev?'LOCAL DEVELOPMENT':'authenticated'} on ${host}:${port}, ${TICK_HZ} Hz`);
 const pingTimer=setInterval(()=>{
   for(const p of peers.values()){
-    if(p.nonce){p.ws.close(1001,'Heartbeat timeout');continue;}
+    if(p.nonce){if(performance.now()-p.pingTime>5000)p.ws.close(1001,'Heartbeat timeout');continue;}
     p.nonce=randomBytes(8);p.pingTime=performance.now();p.ws.ping(p.nonce);
   }
 },1000);
