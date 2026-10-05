@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#091218"><title>Vortex — Rift Outpost</title></head>
 <body>
-<canvas id="scene" aria-label="Arène 3D"></canvas>
+<canvas tabindex="0" id="scene" aria-label="Arène 3D"></canvas>
 <div id="vignette"></div><div id="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 <header id="brand"><b>VORTEX<span> / 03</span></b><small>MOVEMENT · MULTIPLAYER · FPS</small></header>
 <main id="menu">
@@ -16,7 +16,7 @@
     <details id="advanced"><summary>Connexion compétitive</summary><label class="field">TICKET DE MATCH<input id="ticket" type="password" placeholder="Vide sur le serveur local" autocomplete="off"></label></details>
     <button id="join" class="primary" type="submit">LANCER LA PARTIE <span>↗</span></button>
     <button id="leave" type="button" hidden>QUITTER LA PARTIE</button>
-    <p class="controls">ZQSD / WASD · Espace : saut · Shift : slide<br>1 / 2 / molette : arme · R : recharger · Tab : scores · Échap : menu</p>
+    <button id="open-scores" type="button" hidden>JOUEURS / CLASSEMENT</button><p class="controls">ZQSD / WASD · Espace : saut · Shift : slide<br>1 / 2 / molette : arme · R : recharger · Tab : scores · Échap : menu</p>
   </form>
   <p id="status" role="status">Chargement du moteur 3D…</p>
 </main>

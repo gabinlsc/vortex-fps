@@ -43,7 +43,7 @@ function refreshLoadout():void{
   element('pilot-name').textContent=CHARACTERS[character].name.toUpperCase();
   element('weapon-hud').innerHTML=WEAPONS.map((w,i)=>'<span class="hud-weapon '+(weapon===i?'selected':'')+'">'+(i+1)+' / '+w.name.toUpperCase()+'<small id="mag-'+i+'">'+w.ammo+' / ∞</small></span>').join('');
   join.textContent=self?'REPRENDRE LA PARTIE ↗':'LANCER LA PARTIE ↗';
-  element<HTMLButtonElement>('leave').hidden=!self;
+  element<HTMLButtonElement>('leave').hidden=!self;element<HTMLButtonElement>('open-scores').hidden=!self;
   try{localStorage.setItem('vortex-loadout',JSON.stringify({weapon,character,mode,name:nameInput.value}));}catch{}
 }
 weaponOptions.addEventListener('click',e=>{const b=(e.target as Element).closest<HTMLButtonElement>('[data-weapon]');if(b){weapon=Number(b.dataset.weapon);refreshLoadout();}});
@@ -51,6 +51,7 @@ characterOptions.addEventListener('click',e=>{const b=(e.target as Element).clos
 modeOptions.addEventListener('click',e=>{const b=(e.target as Element).closest<HTMLButtonElement>('[data-mode]');if(b&&!ws){mode=b.dataset.mode as GameMode;refreshLoadout();}});
 refreshLoadout();join.disabled=true;
 function requestControl():void {
+  if(document.activeElement instanceof HTMLElement)document.activeElement.blur();canvas.focus({preventScroll:true});
   try{const request=canvas.requestPointerLock();if(request)void request.catch(()=>{status.textContent='Clique sur Reprendre pour capturer la souris.';});}catch{status.textContent='La capture de la souris nécessite un clic.';}
 }
 function resetSession():void {
@@ -69,13 +70,14 @@ function updateButtons():void {
     Number(keys.has('KeyR'))*Button.Reload|(buttons&Button.Fire);
 }
 addEventListener('keydown',e=>{
-  if(e.code==='Tab'&&self&&!(document.activeElement instanceof HTMLInputElement)){e.preventDefault();element('scoreboard').hidden=false;return;}
+  if(e.code==='Tab'&&self&&(document.pointerLockElement===canvas||!(document.activeElement instanceof HTMLInputElement))){e.preventDefault();element('scoreboard').hidden=false;return;}
   if(document.pointerLockElement!==canvas||!self)return;e.preventDefault();keys.add(e.code);
   if(!e.repeat&&e.code==='KeyR')edgeButtons|=Button.Reload;if(!e.repeat&&e.code==='Space')edgeButtons|=Button.Jump;
   if(e.code==='Digit1')weapon=0;if(e.code==='Digit2')weapon=1;
   if(e.code==='Digit1'||e.code==='Digit2')refreshLoadout();updateButtons();
 });
 addEventListener('keyup',e=>{keys.delete(e.code);if(e.code==='Tab')element('scoreboard').hidden=true;updateButtons();});
+element('open-scores').onclick=()=>{element('scoreboard').hidden=false;};
 element('close-scores').onclick=()=>{element('scoreboard').hidden=true;};
 addEventListener('blur',()=>{keys.clear();buttons=0;element('scoreboard').hidden=true;});
 addEventListener('mousemove',e=>{if(document.pointerLockElement!==canvas||!self)return;yaw-=e.movementX*0.002;pitch=Math.max(-Math.PI/2,Math.min(Math.PI/2,pitch-e.movementY*0.002));});
