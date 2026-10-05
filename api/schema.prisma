@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+model User {
+  id String @id @default(uuid())
+  oidcSubject String @unique
+  rating Int @default(1500)
+  matches Int @default(0)
+  tickets QueueTicket[]
+  ledger LedgerEntry[]
+}
+model QueueTicket {
+  id String @id @default(uuid())
+  userId String @unique
+  user User @relation(fields: [userId], references: [id])
+  rating Int
+  regions Json
+  status String @default("QUEUED")
+  createdAt DateTime @default(now())
+  matchId String?
+  @@index([status, createdAt])
+}
+model Match {
+  id String @id
+  region String
+  allocationName String @unique
+  status String @default("ALLOCATED")
+  createdAt DateTime @default(now())
+  results MatchResult[]
+}
+model MatchResult {
+  id String @id @default(uuid())
+  matchId String
+  match Match @relation(fields: [matchId], references: [id])
+  userId String
+  ratingBefore Int
+  ratingAfter Int
+  @@unique([matchId, userId])
+}
+model LedgerEntry {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id])
+  eventId String @unique
+  delta Int
+  createdAt DateTime @default(now())
+  @@index([userId, createdAt])
+}

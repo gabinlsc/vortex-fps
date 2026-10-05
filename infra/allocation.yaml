@@ -1,0 +1,13 @@
+apiVersion: allocation.agones.dev/v1
+kind: GameServerAllocation
+metadata:
+  name: match-REPLACE-WITH-UUID
+  namespace: vortex
+spec:
+  selectors:
+    - matchLabels:
+        agones.dev/fleet: vortex-v1
+      gameServerState: Ready
+  metadata:
+    labels:
+      vortex.dev/match: match-REPLACE-WITH-UUID
