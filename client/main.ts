@@ -13,6 +13,7 @@ import {buildArena,createAvatar,animateAvatar,attachName,disposeName,ViewWeapon,
 const element=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id)! as T;
 const canvas=element<HTMLCanvasElement>('scene'),menu=element('menu'),status=element('status');
 let ws:WebSocket|undefined,self=0,seq=0,yaw=0,pitch=0,weapon=0,character=0,mode:GameMode='ffa',buttons=0,latest:Snapshot|undefined;
+let edgeButtons=0;
 let connected=false,accumulator=0,lastFrame=performance.now(),frames=0,fps=0,fpsTime=lastFrame;
 let renderer:THREE.WebGLRenderer,scene:THREE.Scene,camera:THREE.PerspectiveCamera,showroom:Showroom,viewWeapon:ViewWeapon;
 let world:Awaited<ReturnType<typeof createArena>>,motor:RapierMotor,predictor:Predictor,interpolator=new Interpolator(),clock=new RenderClock();
@@ -53,14 +54,14 @@ function requestControl():void {
   try{const request=canvas.requestPointerLock();if(request)void request.catch(()=>{status.textContent='Clique sur Reprendre pour capturer la souris.';});}catch{status.textContent='La capture de la souris nécessite un clic.';}
 }
 function resetSession():void {
-  self=0;connected=false;latest=undefined;seq=0;buttons=0;keys.clear();accumulator=0;
+  self=0;connected=false;latest=undefined;seq=0;buttons=0;edgeButtons=0;keys.clear();accumulator=0;
   for(const mesh of enemies.values()){disposeName(mesh);scene?.remove(mesh);}enemies.clear();
   document.body.classList.remove('connected','playing');element('scoreboard').hidden=true;
   if(document.pointerLockElement===canvas)document.exitPointerLock();
   menu.hidden=false;join.disabled=false;refreshLoadout();
 }
 element('leave').addEventListener('click',()=>{const old=ws;ws=undefined;old?.close(1000,'Left match');resetSession();status.textContent='Prêt pour une nouvelle partie.';});
-document.addEventListener('pointerlockchange',()=>{const active=document.pointerLockElement===canvas;menu.hidden=active;keys.clear();buttons=0;});
+document.addEventListener('pointerlockchange',()=>{const active=document.pointerLockElement===canvas;menu.hidden=active;keys.clear();buttons=0;edgeButtons=0;});
 function updateButtons():void {
   buttons=Number(keys.has('KeyW')||keys.has('KeyZ'))*Button.Forward|Number(keys.has('KeyS'))*Button.Back|
     Number(keys.has('KeyA')||keys.has('KeyQ'))*Button.Left|Number(keys.has('KeyD'))*Button.Right|
@@ -70,6 +71,7 @@ function updateButtons():void {
 addEventListener('keydown',e=>{
   if(e.code==='Tab'&&self&&!(document.activeElement instanceof HTMLInputElement)){e.preventDefault();element('scoreboard').hidden=false;return;}
   if(document.pointerLockElement!==canvas||!self)return;e.preventDefault();keys.add(e.code);
+  if(!e.repeat&&e.code==='KeyR')edgeButtons|=Button.Reload;if(!e.repeat&&e.code==='Space')edgeButtons|=Button.Jump;
   if(e.code==='Digit1')weapon=0;if(e.code==='Digit2')weapon=1;
   if(e.code==='Digit1'||e.code==='Digit2')refreshLoadout();updateButtons();
 });
@@ -78,7 +80,7 @@ element('close-scores').onclick=()=>{element('scoreboard').hidden=true;};
 addEventListener('blur',()=>{keys.clear();buttons=0;element('scoreboard').hidden=true;});
 addEventListener('mousemove',e=>{if(document.pointerLockElement!==canvas||!self)return;yaw-=e.movementX*0.002;pitch=Math.max(-Math.PI/2,Math.min(Math.PI/2,pitch-e.movementY*0.002));});
 canvas.addEventListener('wheel',e=>{if(document.pointerLockElement!==canvas||!self)return;e.preventDefault();weapon=1-weapon;refreshLoadout();},{passive:false});
-canvas.addEventListener('mousedown',e=>{if(e.button===0&&document.pointerLockElement===canvas&&self)buttons|=Button.Fire;});
+canvas.addEventListener('mousedown',e=>{if(e.button===0&&document.pointerLockElement===canvas&&self){buttons|=Button.Fire;edgeButtons|=Button.Fire;}});
 addEventListener('mouseup',e=>{if(e.button===0)buttons&=~Button.Fire;});
 function feed(text:string):void {
   const row=document.createElement('div');row.className='feed-row';row.textContent=text;const list=element('killfeed');list.prepend(row);
@@ -153,9 +155,9 @@ function frame(now:number):void{
   if(ws?.readyState===WebSocket.OPEN&&self){
     const me=latest?.players.find(p=>p.id===self);
     while(accumulator>=DT){
-      const input=canonical({seq:seq=(seq+1)>>>0,yaw,pitch,buttons:me&&me.health>0?buttons:0,weapon,phase:0});
+      const input=canonical({seq:seq=(seq+1)>>>0,yaw,pitch,buttons:me&&me.health>0?(buttons|edgeButtons):0,weapon,phase:0});
       try{predictor.predict(input);}catch{ws.close(1000,'Prediction backlog');return;}
-      send.push(input);accumulator-=DT;
+      edgeButtons=0;send.push(input);accumulator-=DT;
       if(send.length>=2){if(ws.bufferedAmount>16384){ws.close(1000,'Input backlog');return;}ws.send(encodeBatch(send));send=[];}
     }
     predictor.renderDecay(elapsed);const p=predictor.renderPosition(accumulator/DT);
@@ -168,13 +170,14 @@ function frame(now:number):void{
   const active=Boolean(self)&&document.pointerLockElement===canvas,me=latest?.players.find(p=>p.id===self);
   document.body.classList.toggle('playing',active);
   viewWeapon.update(elapsed,now/1000,Math.hypot(motor.state.v.x,motor.state.v.z),Boolean(buttons&Button.Fire)&&Boolean(me&&me.health>0&&(me.magazines?.[weapon]??0)>0&&!me.reloadLeft),weapon,active);
+  if(document.hidden)return;
   renderer.render(scene,camera);if(active&&me&&me.health>0)viewWeapon.render(renderer);else if(!self)showroom.render(renderer,now/1000,character,weapon);
   frames++;if(now-fpsTime>=500){fps=Math.round(frames*1000/(now-fpsTime));frames=0;fpsTime=now;element('performance').textContent=fps+' FPS · '+(latest?.rttMs??0).toFixed(0)+' ms';}
 }
 let send:Input[]=[];
 async function boot():Promise<void>{
-  renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;
+  renderer=new THREE.WebGLRenderer({canvas,antialias:false,powerPreference:'high-performance'});
+  renderer.setPixelRatio(new URLSearchParams(location.search).get('quality')==='low'?0.6:Math.min(devicePixelRatio,1.25));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;
   renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
   scene=new THREE.Scene();buildArena(scene);camera=new THREE.PerspectiveCamera(90,innerWidth/innerHeight,0.05,220);camera.rotation.order='YXZ';
   showroom=new Showroom();viewWeapon=new ViewWeapon();viewWeapon.resize(camera.aspect);

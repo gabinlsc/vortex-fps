@@ -48,7 +48,7 @@ export function buildArena(scene:THREE.Scene):void {
   const kinds=['ground','stone','metal','crate'] as const,pose=new THREE.Object3D();
   for(const kind of kinds){
     const list=BOXES.filter(b=>b.kind===kind);
-    const material=new THREE.MeshStandardMaterial({map:surfaceTexture(kind),roughness:kind==='metal'?0.55:0.95,metalness:kind==='metal'?0.55:0.05});
+    const material=new THREE.MeshLambertMaterial({map:surfaceTexture(kind)});
     const instances=new THREE.InstancedMesh(cube,material,list.length);
     list.forEach((b,i)=>{pose.position.set(b.p[0],b.p[1],b.p[2]);pose.scale.set(b.h[0]*2,b.h[1]*2,b.h[2]*2);pose.updateMatrix();instances.setMatrixAt(i,pose.matrix);});
     instances.instanceMatrix.needsUpdate=true;scene.add(instances);
