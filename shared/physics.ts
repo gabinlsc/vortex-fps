@@ -5,7 +5,15 @@ import { BOXES } from './map.ts';
 export async function createArena():Promise<RAPIER.World> {
   await RAPIER.init();
   const world=new RAPIER.World({x:0,y:0,z:0}); world.timestep=DT;
-  for(const box of BOXES) world.createCollider(RAPIER.ColliderDesc.cuboid(...box.h).setTranslation(...box.p));
+  for (const box of BOXES) {
+  world.createCollider(
+    RAPIER.ColliderDesc.cuboid(
+      box.h[0], box.h[1], box.h[2]
+    ).setTranslation(
+      box.p[0], box.p[1], box.p[2]
+    )
+  );
+}
   world.step(); return world;
 }
 export class RapierMotor {
