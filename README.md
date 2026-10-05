@@ -1,117 +1,60 @@
-# Vortex foundation
-
-Base d'ingénierie d'un movement FPS navigateur : Three.js, TypeScript, Vite, Rapier WASM partagé,
-serveur Node.js autoritaire 128 Hz, snapshots FlatBuffers 32 Hz et inputs binaires de 12 octets.
-La cible est 16 joueurs par match. Ce dépôt est une fondation vérifiable, pas une certification e-sport.
-
-## Démarrage local
-
-Node.js 24 est conseillé. Dans deux terminaux, depuis ce dossier :
-
+# Vortex — Rift Outpost
+FPS multijoueur navigateur : Three.js, Rapier WASM, TypeScript, serveur autoritaire 128 Hz.
+## Lancer une partie
+Node.js 24 recommandé.
 ```sh
 npm install
 npm run prisma:generate
-npm test
-npm run test:integration
-npm run typecheck
 npm run server:dev
 ```
-
-Dans le second terminal :
-
+Dans un second terminal :
 ```sh
 npm run dev
 ```
-
-Ouvrir http://localhost:5173 et cliquer sur « Entrer dans l'arène ». Le ticket reste vide en développement.
-Ouvrir un second onglet pour tester l'interpolation et la validation serveur. ZQSD ou WASD, Espace,
-Shift, clic gauche, 1/2. Échap libère la souris. Après déconnexion, recharger la page.
-
-`server:dev` lie exclusivement 127.0.0.1. Le serveur standard refuse de démarrer sans `TICKET_SECRET`.
-Le client en HTTPS exige un endpoint `wss://` via `VITE_GAME_URL`. Le Dockerfile et les manifests
-ne terminent pas TLS : un ingress régional dédié doit router le ticket vers le serveur alloué.
-
-```sh
-npm run build
-docker build -f infra/Dockerfile -t vortex:v1 .
-```
-
-## Contenu
-
-| Emplacement | Contrat |
-| --- | --- |
-| `shared/input.ts` | ABI fixe, quantification, validation, lots, séquences avec wrap |
-| `shared/movement.ts` | Air strafing, friction, saut, bonus cadencé, slide |
-| `shared/physics.ts` | Capsule Rapier, sweep, plafond, stance, normales de collision |
-| `shared/snapshot.fbs` et `.ts` | Snapshots FlatBuffers, ACK et état complet du mouvement |
-| `shared/gunplay.ts` | Recul déterministe et intégration de projectiles |
-| `client/netcode.ts` | Prédiction, restauration/rejeu, interpolation et correction visuelle |
-| `client/main.ts` | Arène Three.js et boucle à pas fixe |
-| `client/visuals.ts` | Décor procédural, avatars et arme en vue subjective |
-| `server/main.ts` | Autorité, cadences, queues bornées, hitscan, projectiles, admission |
-| `server/lag-compensation.ts` | Historique immutable, intersections analytiques, rewind plafonné |
-| `server/tickets.ts` | Tickets HMAC de 30 s avec portée match et protection de rejeu serveur |
-| `api/` | NestJS/OIDC, Prisma/PostgreSQL, queue, calcul Elo, sélection et allocation |
-| `infra/` | Image Node/WASM, Fleet, réserve Ready et allocation Agones |
-| `ARCHITECTURE.md` | Les cinq piliers, budgets, mathématiques et conditions de passage en production |
-| `VALIDATION.md` | Vérifications réellement exécutées et limites de validation |
-
-## Périmètre de la démo
-
-Déplacements et impacts sont autoritaires. L'arène utilise des boîtes statiques ; les joueurs ne
-se bloquent pas entre eux. Les projectiles ont une collision par segment et un dommage direct.
-Le client affiche les avatars adverses, la santé et les impacts confirmés. Le décor sci-fi,
-le panorama animé du menu et les armes procédurales ne nécessitent aucun modèle externe.
-Le recul et la flamme de bouche sont cosmétiques, prédits localement : ils ne confirment pas un tir.
-Les tracers et la réplication visuelle des projectiles restent à intégrer.
-
-L'API offre une queue persistante authentifiée. Le worker qui constitue les groupes, détient les
-leases, alloue, émet les tickets et publie les résultats est spécifié dans `ARCHITECTURE.md` ; il
-n'est pas un service opérationnel livré ici. Aucun compte, abonnement ou portefeuille client
-ne peut modifier les dommages, les munitions ou le MMR du serveur de jeu.
-
-## Dépendances et reproductibilité
-
-Les versions directes sont figées. Le registre npm étant inaccessible dans l'environnement de
-livraison, aucun lockfile artificiel n'a été fabriqué. Après installation, revoir puis versionner
-`package-lock.json`, utiliser `npm ci`, figer le digest de l'image et lancer l'analyse CVE/SBOM.
-Le Dockerfile fourni utilise provisoirement `npm install` et ne constitue donc pas encore un build
-reproductible de production. L'intégration 3D et la compilation doivent être exécutées avant déploiement.
-
-## API locale
-
-Configurer `DATABASE_URL`, `OIDC_JWKS_URL`, `OIDC_ISSUER` et `OIDC_AUDIENCE`, puis :
-
-```sh
-npx prisma migrate dev --schema api/schema.prisma --name initial
-npm run api
-```
-
-La configuration OIDC est obligatoire. Les endpoints `POST /v1/queue` et `GET /v1/queue` exigent
-un JWT vérifié. Les migrations de production passent par `prisma migrate deploy`, après création
-et revue de la migration. Le service est lié à 127.0.0.1, derrière son proxy HTTPS.
-
+Ouvrir http://localhost:5173, choisir un pseudo, FFA ou Team Deathmatch, le pilote et l'arme, puis lancer.
+Ouvrir un second onglet pour rejoindre la même partie. Si le navigateur refuse la capture initiale de la souris, cliquer sur Reprendre.
+Le serveur de développement est limité à 127.0.0.1. Pour une publication, configurer un endpoint WSS via VITE_GAME_URL, ALLOWED_ORIGINS, TICKET_SECRET et MATCH_ID ; les tickets d'admission restent obligatoires hors développement.
+## Contrôles
+| Action | Contrôle |
+|---|---|
+| Déplacements | ZQSD / WASD |
+| Bunny hop | Espace |
+| Slide | Shift |
+| Tir | Clic gauche |
+| Arsenal | 1 / 2 / molette |
+| Recharger | R |
+| Classement et joueurs | Maintenir Tab |
+| Menu / reprendre | Échap / bouton Reprendre |
+## Carte
+Rift Outpost mesure 128 × 128 m. Le sol est continu, avec des limites solides, un avant-poste intérieur à quatre entrées, deux grottes avec toit et alcôves, clusters rocheux, plateformes basses et caisses.
+Les surfaces utilisent des textures procédurales déterministes, générées localement : aucun téléchargement de modèle ou de texture n'est nécessaire.
+Douze spawns validés hors des solides. Le serveur choisit celui qui maximise la distance au plus proche adversaire ; en équipe, il respecte la moitié nord/sud.
+Réapparition après deux secondes, protection d'une seconde. Le serveur replace aussi les joueurs tombés hors carte.
+## Arsenal
+Rail : hitscan, chargeur de 6, 100 dégâts, rechargement 1,5 s.
+Pulse : projectiles, chargeur de 24, 35 dégâts, rechargement 1,25 s.
+Réserve infinie ; le chargeur et le délai de rechargement sont autoritaires. R recharge un chargeur entamé ; un chargeur vide déclenche automatiquement le rechargement.
+Une arme ne peut pas tirer pendant le rechargement. Le cooldown reste commun lors d'un changement d'arme, pour éviter de contourner la cadence.
+## Joueurs et modes
+Spectre, Ember, Prism : cosmétiques, avec mêmes collisions et déplacements.
+Pseudo validé à l'admission, visible sur le classement et au-dessus de l'avatar.
+FFA : chacun pour soi. TDM : équipes Azure/Ember équilibrées à l'entrée, sans dégâts alliés.
+Les deux modes sont des salons séparés : snapshots, dégâts, projectiles, scores et annonces sont filtrés par mode.
+Manches de 10 minutes, résultat annoncé et nouvelle manche automatique. Pas de bots ni de classement persistant de ces parties locales.
+Kills, assists et morts calculés par le serveur. Une assistance nécessite au moins 25 dégâts dans les dix dernières secondes, sans compter le kill du tireur.
+Mini-carte : vous et vos alliés ; aucun radar révélant les adversaires.
 ## Validation
-
-Les tests autonomes couvrent la sérialisation, les accélérations, les intersections, le rewind,
-les tickets, la réconciliation et la sélection régionale. Les tests d'intégration Rapier et
-FlatBuffers nécessitent les dépendances npm. Les budgets 144 FPS / 128 Hz doivent être mesurés
-sur des machines et réseaux représentatifs, avec pertes, jitter, backpressure et charge.
-
-## Arsenal, pilotes et Helix
-
-Le lobby propose Rail (hitscan) et Pulse (projectile), sélectionnables par carte, touches 1/2
-ou molette en jeu. Les silhouettes 3D et cadences visuelles sont distinctes.
-Spectre, Ember et Prism sont trois pilotes cosmétiques : même capsule, vitesse et santé.
-Le serveur valide le pilote à l'admission et le réplique dans les snapshots ; le choix est
-verrouillé pendant la session. Les préférences sont mémorisées localement.
-
-Un aperçu 3D du pilote et de l'arme apparaît sur les écrans d'au moins 900 px.
-Helix remplace le blockout : couvert symétrique par rotation, plateforme centrale,
-plateformes latérales et marches à franchir par sauts. Le marquage nord/sud cyan/orange
-aide à se repérer. Les collisions utilisent exactement la même carte côté client et serveur.
-Les points d'apparition sont fixes et validés hors des solides ; ils ne sélectionnent pas
-encore dynamiquement la zone la plus sûre vis-à-vis des adversaires.
-
-Validation : 22 tests autonomes passent ; syntaxe TypeScript vérifiée par Node.
-Le typecheck complet, les tests Rapier/FlatBuffers et le rendu restent à lancer après installation npm.
+```sh
+npm test
+npm run test:integration
+npm run build
+npx playwright install --with-deps chromium
+npm run test:e2e
+```
+La CI exécute les tests purs, Rapier/FlatBuffers, le serveur WebSocket réel et le navigateur Chromium avec WebGL logiciel. Les captures et traces sont dans l'artefact vortex-browser-review.
+L'ABI inputs passe à v2 (bit Reload) ; snapshots VTX2. Client et serveur doivent être mis à jour ensemble.
+Les cibles 144 FPS et 128 ticks demandent encore un benchmark matériel et une qualification sous charge ; un workflow vert ne constitue pas ce benchmark.
+## Architecture
+shared/ : carte, règles, mouvement, armes et ABI. server/ : simulation, combats, admission et Agones.
+client/ : lobby, moteur 3D, prédiction, interpolation et interfaces. api/ : fondations NestJS/OIDC et Prisma.
+L'API de matchmaking complète et le déploiement public restent des travaux distincts ; voir ARCHITECTURE.md.
