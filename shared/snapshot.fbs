@@ -3,7 +3,10 @@ table Player {
   id:ushort; ack:uint; x:float; y:float; z:float; vx:float; vy:float; vz:float;
   flags:ubyte; slideTicks:ushort; lastButtons:ubyte; yaw:float; pitch:float;
   health:ushort; epoch:uint; hits:uint; character:ubyte;
+  name:string; team:ubyte; kills:uint; assists:uint; deaths:uint; weapon:ubyte;
+  magazine0:ushort; magazine1:ushort; reloadWeaponCode:ubyte; reloadLeft:ushort;
+  respawnLeft:ushort; protectedLeft:ushort; shotIndex:uint;
 }
-table Snapshot { tick:uint; time:double; self:ushort; players:[Player]; rttMs:float; }
+table Snapshot {tick:uint; time:double; self:ushort; players:[Player]; rttMs:float; mode:ubyte; score1:uint; score2:uint; remaining:ushort;}
 root_type Snapshot;
-file_identifier "VTX1";
+file_identifier "VTX2";

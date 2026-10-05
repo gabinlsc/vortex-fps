@@ -20,6 +20,33 @@ test('same WASM simulation and restored replay produce matching positions',async
 });
 test('FlatBuffers snapshot carries all movement state and ACK',()=>{
   const state=initialState(1,2,3);state.crouched=true;state.slideTicks=12;state.lastButtons=32;
-  const source={tick:65536,time:512,self:2,rttMs:20,players:[{id:2,ack:0xffffffff,state,yaw:1,pitch:0,health:75,epoch:4,hits:2,character:2}]};
+  const source={tick:65536,time:512,self:2,rttMs:20,mode:1,score1:8,score2:5,remaining:123,players:[{id:2,ack:0xffffffff,state,yaw:1,pitch:0,health:75,epoch:4,hits:2,character:2,name:'Émilie',team:2,kills:3,assists:2,deaths:1,weapon:1,magazines:[4,17],reloadWeapon:1,reloadLeft:42,respawnLeft:0,protectedLeft:12,shotIndex:9}]};
   assert.deepEqual(decodeSnapshot(encodeSnapshot(source)),source);
+});
+
+test('every spawn lands on solid ground and remains inside the map',async()=>{
+  const {SPAWNS}=await import('../shared/map.ts');
+  const world=await createArena();
+  try{
+    for(const spawn of SPAWNS){
+      const motor=new RapierMotor(world,initialState(spawn[0],spawn[1],spawn[2]),new Set());
+      try{
+        world.step();
+        for(let seq=1;seq<=256;seq++){motor.tick(canonical({seq,yaw:0,pitch:0,buttons:0,weapon:0,phase:0}));world.step();}
+        assert.ok(motor.state.grounded,'spawn must land on ground');
+        assert.ok(motor.state.p.y>0.85&&motor.state.p.y<1.2,'spawn must stay above the floor');
+      }finally{motor.dispose();}
+    }
+  }finally{world.free();}
+});
+test('new arena creation cannot corrupt an existing WASM world',async()=>{
+  const first=await createArena(),baseline=await createArena();
+  const a=new RapierMotor(first,initialState(0,1,20),new Set()),b=new RapierMotor(baseline,initialState(0,1,20),new Set());
+  const another=await createArena();
+  try{
+    for(let seq=1;seq<=64;seq++){
+      const input=canonical({seq,yaw:0,pitch:0,buttons:Button.Jump,weapon:0,phase:0});
+      a.tick(input);first.step();b.tick(input);baseline.step();assert.deepEqual(a.state,b.state);
+    }
+  }finally{a.dispose();b.dispose();first.free();baseline.free();another.free();}
 });

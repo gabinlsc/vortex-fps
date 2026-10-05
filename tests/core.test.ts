@@ -29,7 +29,7 @@ test('batches reject truncation, padding, reserved bits and invalid weapons',()=
   const b=new Uint8Array(encodeBatch([input,{...input,seq:2}]));assert.equal(decodeBatch(b).length,2);
   assert.throws(()=>decodeBatch(b.subarray(0,b.length-1)));const padded=new Uint8Array(b.length+1);padded.set(b);assert.throws(()=>decodeBatch(padded));
   const reserved=b.slice();reserved[3]=1;assert.throws(()=>decodeBatch(reserved));const bad=b.slice();bad[13]=9;assert.throws(()=>decodeBatch(bad));
-  assert.throws(()=>encodeInput({...input,yaw:NaN}));assert.throws(()=>encodeInput({...input,buttons:128}));
+  assert.throws(()=>encodeInput({...input,yaw:NaN}));assert.throws(()=>encodeInput({...input,buttons:256}));
 });
 test('air acceleration caps projection and can increase total speed',()=>{
   const v={x:10,y:0,z:0};accelerate(v,0,-1,8,1.2,12);
@@ -121,10 +121,53 @@ test('character admission rejects unknown cosmetics and non-integer payloads',as
 });
 test('Helix spawn capsules are clear of solid cover and map has rotational symmetry',async()=>{
   const {BOXES,SPAWNS,MAP_VERSION}=await import('../shared/map.ts');
-  assert.equal(MAP_VERSION,'helix-arena-2');
+  assert.equal(MAP_VERSION,'rift-outpost-3');
   for(const [x,y,z] of SPAWNS)for(const b of BOXES){
     const overlaps=Math.abs(x-b.p[0])<b.h[0]+MOVE.radius&&Math.abs(y-b.p[1])<b.h[1]+MOVE.standHalf+MOVE.radius&&Math.abs(z-b.p[2])<b.h[2]+MOVE.radius;
     assert.equal(overlaps,false,'spawn intersects static solid');
   }
   for(const b of BOXES)assert.ok(BOXES.some(other=>other.p[0]===-b.p[0]&&other.p[1]===b.p[1]&&other.p[2]===-b.p[2]&&other.h.every((v,i)=>v===b.h[i])));
+});
+
+test('inventory reload consumes a magazine and replenishes from an infinite reserve',async()=>{
+  const {newInventory,consumeRound,updateInventory,WEAPONS}=await import('../shared/gunplay.ts');
+  const inv=newInventory();for(let i=0;i<WEAPONS[0].ammo;i++)assert.equal(consumeRound(inv,0),true);
+  assert.equal(consumeRound(inv,0),false);updateInventory(inv,100,0,false);
+  assert.equal(inv.reloadWeapon,0);assert.equal(consumeRound(inv,1),false);
+  updateInventory(inv,100+WEAPONS[0].reloadTicks-1,0,false);assert.equal(inv.magazines[0],0);
+  updateInventory(inv,100+WEAPONS[0].reloadTicks,0,false);assert.equal(inv.magazines[0],6);
+  assert.equal(inv.reloadWeapon,-1);assert.equal(consumeRound(inv,0),true);
+  updateInventory(inv,500,0,true);assert.equal(inv.reloadWeapon,0);
+});
+test('room isolation, balanced teams and friendly-fire policy',async()=>{
+  const {assignTeam,canDamage,validateMode,nickname}=await import('../shared/match.ts');
+  assert.equal(assignTeam('ffa',[]),0);assert.equal(assignTeam('tdm',[1]),2);
+  assert.equal(canDamage({mode:'tdm',team:1},{mode:'tdm',team:1}),false);
+  assert.equal(canDamage({mode:'tdm',team:1},{mode:'tdm',team:2}),true);
+  assert.equal(canDamage({mode:'ffa',team:0},{mode:'tdm',team:1}),false);
+  assert.equal(canDamage({mode:'ffa',team:0},{mode:'ffa',team:0}),true);
+  assert.equal(nickname('  Gabin  '),'Gabin');assert.equal(nickname('Émilie'),'Émilie');
+  for(const value of ['',1,'<script>','a','a'.repeat(19)])assert.throws(()=>nickname(value));
+  assert.throws(()=>validateMode('cheat'));
+});
+test('spawn choice maximizes distance and keeps teams in their half',async()=>{
+  const {chooseSpawn}=await import('../shared/match.ts');
+  const enemy={x:-54,y:1,z:-54};
+  const spawn=chooseSpawn(0,[enemy]);assert.ok(spawn[0]>0&&spawn[2]>0);
+  assert.ok(chooseSpawn(1,[enemy])[2]<0);assert.ok(chooseSpawn(2,[enemy])[2]>0);
+});
+
+test('combat awards a kill and recent damage assist once, ignores stale epochs and allied damage',async()=>{
+  const {applyHit}=await import('../server/combat.ts');
+  const make=(id:number,team:0|1|2)=>({id,epoch:1,mode:'tdm' as const,team,health:100,protectedUntil:0,kills:0,assists:0,deaths:0,hits:0,contributors:new Map<number,{damage:number;time:number}>()});
+  const a=make(1,1),helper=make(2,1),victim=make(3,2),players=new Map([[1,a],[2,helper],[3,victim]]);
+  assert.equal(applyHit(a,helper,1,100,200,players),'ignored');
+  assert.equal(applyHit(victim,helper,1,35,200,players),'hit');
+  assert.equal(applyHit(victim,a,1,100,220,players),'kill');
+  assert.equal(a.kills,1);assert.equal(helper.assists,1);assert.equal(victim.deaths,1);
+  assert.equal(applyHit(victim,a,1,100,221,players),'ignored');assert.equal(a.kills,1);
+  victim.health=100;victim.epoch++;assert.equal(applyHit(victim,a,1,100,222,players),'ignored');
+  victim.protectedUntil=300;assert.equal(applyHit(victim,a,2,100,250,players),'ignored');
+  victim.protectedUntil=0;applyHit(victim,helper,2,35,300,players);applyHit(victim,a,2,100,2000,players);
+  assert.equal(helper.assists,1);
 });

@@ -36,8 +36,9 @@ export class RapierMotor {
     this.controller.setApplyImpulsesToDynamicBodies(false);
   }
   restore(state:MotionState):void {
+    const changed=this.state.crouched!==state.crouched;
     this.state=copyState(state);
-    this.collider.setShape(new RAPIER.Capsule(state.crouched?MOVE.crouchHalf:MOVE.standHalf,MOVE.radius));
+    if(changed)this.collider.setShape(new RAPIER.Capsule(state.crouched?MOVE.crouchHalf:MOVE.standHalf,MOVE.radius));
     this.collider.setTranslation(state.p);
   }
   private stance(crouched:boolean):void {

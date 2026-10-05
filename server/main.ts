@@ -1,3 +1,4 @@
+import {applyHit} from './combat.ts';
 import {createServer} from 'node:http';
 import {randomBytes} from 'node:crypto';
 import {WebSocketServer,WebSocket} from 'ws';
@@ -6,8 +7,9 @@ import {initialState,copyState} from '../shared/movement.ts';
 import {Button,DT,TICK_HZ,decodeBatch,type Input} from '../shared/input.ts';
 import {encodeSnapshot,type PlayerSnapshot} from '../shared/snapshot.ts';
 import {BOXES,MAP_VERSION,SPAWNS} from '../shared/map.ts';
-import {WEAPONS,recoil,projectileStep,type Projectile} from '../shared/gunplay.ts';
+import {newInventory,updateInventory,consumeRound,type Inventory,WEAPONS,recoil,projectileStep,type Projectile} from '../shared/gunplay.ts';
 import {History,bodyHitbox,direction,rewindTime,castHistorical,rayBox} from './lag-compensation.ts';
+import {nickname,validateMode,assignTeam,canDamage,chooseSpawn,type GameMode,type Team} from '../shared/match.ts';
 import {validateCharacter} from '../shared/characters.ts';
 import {verifyTicket} from './tickets.ts';
 import {AgonesLifecycle} from './agones.ts';
@@ -21,29 +23,40 @@ const world=await createArena(),handles=new Set<number>(),history=new History(32
 let tick=0,nextId=1,running=true;
 interface Queued {input:Input;receiptTick:number}
 interface Peer {
-  id:number;character:number;sub:string;ws:WebSocket;motor:RapierMotor;queue:Queued[];head:number;
+  id:number;character:number;name:string;mode:GameMode;team:Team;kills:number;assists:number;deaths:number;respawnAt:number;protectedUntil:number;contributors:Map<number,{damage:number;time:number}>;inventory:Inventory;sub:string;ws:WebSocket;motor:RapierMotor;queue:Queued[];head:number;
   received:number;ack:number;last:Input;epoch:number;health:number;hits:number;nextShot:number;shotIndex:number;
-  ammo:number[];rtt:number;rttSamples:number[];nonce:Buffer|null;pingTime:number;authTime:number;
+  rtt:number;rttSamples:number[];nonce:Buffer|null;pingTime:number;authTime:number;
   budget:number;budgetTime:number;lastPacket:number;
 }
 const peers=new Map<number,Peer>(),subjects=new Set<string>(),redeemed=new Map<string,number>();
 const projectiles:Projectile[]=[];
+const rooms:Record<GameMode,{end:number;score1:number;score2:number}>={ffa:{end:0,score1:0,score2:0},tdm:{end:0,score1:0,score2:0}};
+function targets(owner:Peer){
+  return [...peers.values()].filter(p=>p.id!==owner.id&&p.health>0&&canDamage(owner,p));
+}
+function respawn(p:Peer):void {
+  const spawn=chooseSpawn(p.team,targets(p).map(e=>e.motor.state.p),p.id+p.epoch);
+  p.epoch++;p.health=100;p.respawnAt=0;p.protectedUntil=tick+TICK_HZ;
+  p.shotIndex=0;p.inventory=newInventory();p.nextShot=tick+TICK_HZ;p.contributors.clear();
+  p.motor.restore(initialState(spawn[0],spawn[1],spawn[2]));p.last={...p.last,buttons:0};
+}
+function event(mode:GameMode,data:Record<string,unknown>):void {
+  const message=JSON.stringify(data);for(const p of peers.values())if(p.mode===mode&&p.ws.readyState===WebSocket.OPEN&&p.ws.bufferedAmount<65536)p.ws.send(message);
+}
+
 function wallDistance(o:{x:number;y:number;z:number},d:{x:number;y:number;z:number},range=200):number {
   let nearest=range;for(const b of BOXES){const t=rayBox(o,d,b.p,b.h);if(t!==null)nearest=Math.min(nearest,t);}return nearest;
 }
 function damage(id:number,epoch:number,amount:number,owner:Peer):void {
-  const target=peers.get(id);if(!target || target.epoch!==epoch)return;
-  target.health-=amount;owner.hits++;
-  if(target.health<=0){
-    target.epoch++;target.health=100;target.shotIndex=0;target.ammo=WEAPONS.map(w=>w.ammo);
-    target.nextShot=tick+TICK_HZ;target.last={...target.last,buttons:0};
-    target.motor.restore(initialState(...SPAWNS[(target.id+target.epoch)%SPAWNS.length]));
-  }
+  const target=peers.get(id);if(!target)return;
+  if(applyHit(target,owner,epoch,amount,tick,peers)!=='kill')return;
+  target.respawnAt=tick+2*TICK_HZ;target.last={...target.last,buttons:0};
+  if(owner.team===1)rooms[owner.mode].score1++;if(owner.team===2)rooms[owner.mode].score2++;
+  event(owner.mode,{type:'kill',killer:owner.name,victim:target.name,weapon:owner.last.weapon});
 }
 function shoot(p:Peer,queued:Queued|undefined):void {
-  const input=p.last;if(!(input.buttons&Button.Fire)||tick<p.nextShot)return;
-  const weapon=WEAPONS[input.weapon];if(!weapon||p.ammo[input.weapon]<=0)return;
-  p.ammo[input.weapon]--;p.nextShot=tick+weapon.cooldownTicks;
+  const input=p.last;if(!(input.buttons&Button.Fire)||tick<p.nextShot||p.health<=0||tick<p.protectedUntil)return;
+  const weapon=WEAPONS[input.weapon];if(!weapon||!consumeRound(p.inventory,input.weapon))return;p.nextShot=tick+weapon.cooldownTicks;
   const pattern=recoil(p.shotIndex++),d=direction(input.yaw+pattern.yaw,
     Math.max(-Math.PI/2,Math.min(Math.PI/2,input.pitch+pattern.pitch))),o=eye(p.motor.state);
   if(input.weapon===1){
@@ -53,7 +66,8 @@ function shoot(p:Peer,queued:Queued|undefined):void {
   // Historical targets; source is the server-simulated position of this command, never a client origin.
   const now=tick*DT,query=rewindTime(now,{rttMs:p.rtt,interpolationMs:50,
     queueMs:queued?(tick-queued.receiptTick)*DT*1000:0});
-  const boxes=history.sample(query);if(!boxes)return;
+  const historical=history.sample(query);if(!historical)return;
+  const ids=new Set(targets(p).map(e=>e.id)),boxes=historical.filter(b=>ids.has(b.id));
   const hit=castHistorical(o,d,p.id,boxes,wallDistance(o,d),weapon.range);
   if(hit)damage(hit.id,hit.epoch,weapon.damage,p);
 }
@@ -65,6 +79,10 @@ function fixedTick():void {
     if(p.head>32){p.queue=p.queue.slice(p.head);p.head=0;}
     // Missing commands may hold movement/fire at server rate, never advance time or create extra edges.
     if(performance.now()-p.lastPacket>150)p.last={...p.last,buttons:0};
+    if(p.health<=0&&tick>=p.respawnAt)respawn(p);
+    if(p.health>0&&(p.motor.state.p.y<-5||Math.abs(p.motor.state.p.x)>63||Math.abs(p.motor.state.p.z)>63))respawn(p);
+    if(p.health<=0)p.last={...p.last,buttons:0};
+    updateInventory(p.inventory,tick,p.last.weapon,Boolean(p.last.buttons&Button.Reload));
     p.motor.tick(p.last);commands.set(p.id,cmd);
   }
   world.step();
@@ -74,16 +92,29 @@ function fixedTick():void {
   for(let i=projectiles.length-1;i>=0;i--){
     const projectile=projectiles[i],segment=projectileStep(projectile,DT),owner=peers.get(projectile.owner);
     const wall=wallDistance(segment.from,segment.direction,segment.distance);
-    const hit=castHistorical(segment.from,segment.direction,projectile.owner,boxes,wall,segment.distance);
+    const ids=new Set(owner?targets(owner).map(e=>e.id):[]);
+    const hit=castHistorical(segment.from,segment.direction,projectile.owner,boxes.filter(b=>ids.has(b.id)),wall,segment.distance);
     if(hit&&owner&&owner.epoch===projectile.ownerEpoch)damage(hit.id,hit.epoch,projectile.damage,owner);
     if(hit||wall<segment.distance||projectile.life<=0)projectiles.splice(i,1);
   }
   if(tick%4===0){ // 32 snapshots/s independent from 128 physics ticks/s
-    const players:PlayerSnapshot[]=[...peers.values()].map(p=>({id:p.id,ack:p.ack,state:copyState(p.motor.state),
-      yaw:p.last.yaw,pitch:p.last.pitch,health:p.health,epoch:p.epoch,hits:p.hits,character:p.character}));
-    for(const p of peers.values()){
-      if(p.ws.bufferedAmount>64*1024){p.ws.close(1013,'Slow consumer');continue;}
-      p.ws.send(encodeSnapshot({tick,time:tick*DT,self:p.id,players,rttMs:p.rtt}),{binary:true});
+    for(const mode of ['ffa','tdm'] as const){
+      const room=rooms[mode],members=[...peers.values()].filter(p=>p.mode===mode);
+      if(room.end&&tick>=room.end){
+        const winners=members.slice().sort((a,b)=>b.kills-a.kills);
+        event(mode,{type:'round',winner:mode==='ffa'?(winners[0]?.name??'Personne'):room.score1===room.score2?'Égalité':room.score1>room.score2?'Équipe Azure':'Équipe Ember'});
+        room.end=tick+600*TICK_HZ;room.score1=0;room.score2=0;
+        for(const p of members){p.kills=0;p.assists=0;p.deaths=0;respawn(p);}
+      }
+      const players:PlayerSnapshot[]=members.map(p=>({id:p.id,ack:p.ack,state:copyState(p.motor.state),
+        yaw:p.last.yaw,pitch:p.last.pitch,health:p.health,epoch:p.epoch,hits:p.hits,character:p.character,
+        name:p.name,team:p.team,kills:p.kills,assists:p.assists,deaths:p.deaths,weapon:p.last.weapon,
+        magazines:p.inventory.magazines,reloadWeapon:p.inventory.reloadWeapon,reloadLeft:Math.max(0,p.inventory.reloadUntil-tick),
+        respawnLeft:p.health<=0?Math.max(0,p.respawnAt-tick):0,protectedLeft:Math.max(0,p.protectedUntil-tick),shotIndex:p.shotIndex}));
+      for(const p of members){
+        if(p.ws.bufferedAmount>64*1024){p.ws.close(1013,'Slow consumer');continue;}
+        p.ws.send(encodeSnapshot({tick,time:tick*DT,self:p.id,players,rttMs:p.rtt,mode:mode==='tdm'?1:0,score1:room.score1,score2:room.score2,remaining:Math.ceil(Math.max(0,room.end-tick)/TICK_HZ)}),{binary:true});
+      }
     }
   }
 }
@@ -110,8 +141,8 @@ wss.on('connection',ws=>{
       if(!peer){
         if(binary)throw new Error('Auth first');
         const auth=JSON.parse(raw.toString());
-        const character=validateCharacter(auth.character??0);
-        if(auth.version!==1||auth.map!==MAP_VERSION||peers.size>=16||nextId>65535)throw new Error('Build/capacity mismatch');
+        const character=validateCharacter(auth.character??0),name=nickname(auth.name),mode=validateMode(auth.mode);
+        if(auth.version!==2||auth.map!==MAP_VERSION||peers.size>=16||nextId>65535)throw new Error('Build/capacity mismatch');
         let sub:string;
         if(dev)sub=`local-${nextId}`;
         else{
@@ -120,10 +151,12 @@ wss.on('connection',ws=>{
           for(const [key,expiry]of redeemed)if(expiry<Date.now()/1000)redeemed.delete(key);
           redeemed.set(claims.jti,claims.exp);sub=claims.sub;
         }
-        const id=nextId++,now=performance.now();
-        peer={id,character,sub,ws,motor:new RapierMotor(world,initialState(...SPAWNS[(id-1)%SPAWNS.length]),handles),queue:[],head:0,
+        const id=nextId++,now=performance.now(),team=assignTeam(mode,[...peers.values()].filter(p=>p.mode===mode).map(p=>p.team));
+        const spawn=chooseSpawn(team,[...peers.values()].filter(p=>p.mode===mode&&(mode==='ffa'||p.team!==team)&&p.health>0).map(p=>p.motor.state.p),id);
+        if(![...peers.values()].some(p=>p.mode===mode))rooms[mode]={end:tick+600*TICK_HZ,score1:0,score2:0};
+        peer={id,character,name,mode,team,kills:0,assists:0,deaths:0,respawnAt:0,protectedUntil:tick+TICK_HZ,contributors:new Map(),inventory:newInventory(),sub,ws,motor:new RapierMotor(world,initialState(spawn[0],spawn[1],spawn[2]),handles),queue:[],head:0,
           received:0,ack:0,last:{seq:0,yaw:0,pitch:0,buttons:0,weapon:0,phase:0},epoch:0,health:100,hits:0,
-          nextShot:tick,shotIndex:0,ammo:WEAPONS.map(w=>w.ammo),rtt:0,rttSamples:[],nonce:null,pingTime:0,
+          nextShot:tick,shotIndex:0,rtt:0,rttSamples:[],nonce:null,pingTime:0,
           authTime:now,budget:16,budgetTime:now,lastPacket:now};
         subjects.add(sub);peers.set(id,peer);clearTimeout(timeout);return;
       }
