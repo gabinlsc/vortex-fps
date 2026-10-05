@@ -1,13 +1,34 @@
 <!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#07121d"><title>Vortex — Movement FPS</title></head>
-<body><canvas id="scene" aria-label="Arène 3D Vortex"></canvas><div id="crosshair" aria-hidden="true">+</div>
-<section id="menu"><span class="eyebrow">MULTIPLAYER MOVEMENT FPS / ALPHA 01</span><h1>VORTEX<span class="title-dot">.</span></h1>
-<p class="tagline">Ton pilote. Ton arsenal.<br>Ta prochaine arène.</p>
-<div class="specs"><span>128 Hz <small>SIMULATION</small></span><span>3D <small>WEBGL</small></span><span>EU / US <small>CIBLE RÉGIONALE</small></span></div>
-<div class="loadout-heading"><span>01 / ARSENAL</span><small>1 · 2 · MOLETTE</small></div><div id="weapon-options" class="selection-grid"></div>
-<div class="loadout-heading"><span>02 / PILOTE</span><small>COSMÉTIQUE</small></div><div id="character-options" class="selection-grid characters"></div><p id="character-description" class="selection-description"></p>
-<div class="map-card"><span class="map-badge">H</span><div><b>HELIX</b><small>3 voies · plateformes · arène symétrique</small></div><span class="live-dot"></span></div>
-<label>Ticket de match <input id="ticket" type="password" placeholder="Vide en développement local" autocomplete="off"></label>
-<button id="join">Entrer dans l’arène <span aria-hidden="true">↗</span></button><p class="controls">ZQSD / WASD · Espace : saut · Shift : slide<br>Clic : tirer · 1 : rail · 2 : pulse · Échap : menu</p>
-</section><div id="showroom-caption"><span>LOADOUT / LIVE PREVIEW</span><h2 id="pilot-name">SPECTRE</h2><p>Aucun bonus de dégâts ou de vitesse.</p></div><div id="weapon-hud"></div><aside id="hud"><b>VORTEX <small>ARENA / 01</small></b><span id="stats">Connexion requise</span></aside><p id="status" role="status"></p>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#091218"><title>Vortex — Rift Outpost</title></head>
+<body>
+<canvas id="scene" aria-label="Arène 3D"></canvas>
+<div id="vignette"></div><div id="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+<header id="brand"><b>VORTEX<span> / 03</span></b><small>MOVEMENT · MULTIPLAYER · FPS</small></header>
+<main id="menu">
+  <div class="eyebrow">RIFT OUTPOST / SAISON ZÉRO</div><h1>ENTER<br>THE RIFT<span>.</span></h1>
+  <p class="intro">Entre les falaises et les machines,<br>la vitesse fait la différence.</p>
+  <form id="lobby">
+    <label class="field">TON PSEUDO<input id="nickname" maxlength="18" minlength="2" required placeholder="Pilote" autocomplete="nickname" value="Pilote"></label>
+    <fieldset id="mode-options"><legend>01 / MODE DE JEU</legend><div class="selection-grid"><button type="button" class="option selected" data-mode="ffa" aria-pressed="true"><strong>FREE FOR ALL</strong><small>Chacun pour soi · 10 min</small></button><button type="button" class="option" data-mode="tdm" aria-pressed="false"><strong>TEAM DEATHMATCH</strong><small>Azure vs Ember · sans tir allié</small></button></div></fieldset>
+    <fieldset><legend>02 / ARSENAL</legend><div id="weapon-options" class="selection-grid"></div></fieldset>
+    <fieldset><legend>03 / PILOTE <span>Cosmétique</span></legend><div id="character-options" class="selection-grid characters"></div><p id="character-description"></p></fieldset>
+    <div class="map-card"><span class="map-badge">R</span><div><b>RIFT OUTPOST</b><small>128 × 128 m · grottes · alcôves · avant-poste</small></div><span class="live-dot"></span></div>
+    <details id="advanced"><summary>Connexion compétitive</summary><label class="field">TICKET DE MATCH<input id="ticket" type="password" placeholder="Vide sur le serveur local" autocomplete="off"></label></details>
+    <button id="join" class="primary" type="submit">LANCER LA PARTIE <span>↗</span></button>
+    <button id="leave" type="button" hidden>QUITTER LA PARTIE</button>
+    <p class="controls">ZQSD / WASD · Espace : saut · Shift : slide<br>1 / 2 / molette : arme · R : recharger · Tab : scores · Échap : menu</p>
+  </form>
+  <p id="status" role="status">Chargement du moteur 3D…</p>
+</main>
+<aside id="showroom-caption"><span>TON LOADOUT / APERÇU 3D</span><h2 id="pilot-name">SPECTRE</h2><p>Trois pilotes. Une même hitbox.</p></aside>
+<div id="game-hud">
+  <div id="match-strip"><span id="mode-label">FFA</span><b id="match-clock">10:00</b><span id="team-score"></span><span id="players-count">0 JOUEUR</span></div>
+  <div id="performance"></div><div id="killfeed" aria-live="polite"></div>
+  <canvas id="minimap" width="170" height="170" aria-label="Carte : votre position et vos alliés"></canvas>
+  <div id="vitals"><small>INTÉGRITÉ</small><strong id="health">100</strong><div class="health-track"><i id="health-bar"></i></div><span id="personal-stats">0 K · 0 A · 0 D</span></div>
+  <div id="inventory"><div id="weapon-hud"></div><div class="ammo-main"><span id="weapon-name">RAIL</span><strong id="ammo">6</strong><span class="reserve">/ ∞<small>RÉSERVE</small></span></div><div id="reload-status">R POUR RECHARGER</div><progress id="reload-progress" max="1" value="0"></progress></div>
+  <div id="death-screen" hidden><span>ÉLIMINÉ</span><h2 id="respawn-count">2</h2><p>Retour dans l'arène…</p></div>
+  <div id="protection" hidden>PROTECTION DE SPAWN</div>
+</div>
+<section id="scoreboard" hidden aria-label="Joueurs de la partie"><header><div><span>PARTIE EN COURS</span><h2>CLASSEMENT</h2></div><button type="button" id="close-scores">FERMER ×</button></header><table><thead><tr><th>PILOTE</th><th>ÉQUIPE</th><th>KILLS</th><th>ASSISTS</th><th>MORTS</th></tr></thead><tbody id="score-rows"></tbody></table><p>Tab pour afficher · les statistiques sont calculées par le serveur.</p></section>
 <script type="module" src="/client/main.ts"></script></body></html>
