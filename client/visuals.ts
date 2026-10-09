@@ -1,10 +1,9 @@
 import * as THREE from 'three';
 export {buildArena,animateArena} from './arena.ts';
 import {CHARACTERS} from '../shared/characters.ts';
+import {toonMaterial} from './materials.ts';
 
-const ramp=new THREE.DataTexture(new Uint8Array([95,180,255]),3,1,THREE.RedFormat);
-ramp.minFilter=ramp.magFilter=THREE.NearestFilter;ramp.needsUpdate=true;
-const toon=(color:number)=>new THREE.MeshToonMaterial({color,gradientMap:ramp});
+const toon=toonMaterial;
 
 // Solid silhouettes follow collision boxes; thin surface decals add no gameplay obstacles.
 // Shared geometry/materials avoid one GPU resource allocation per avatar.

@@ -1,35 +1,27 @@
-﻿import * as THREE from 'three';
+import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {BOXES,ROUTES,SPAWNS,type ArenaBox,type SurfaceKind} from '../shared/map.ts';
 import {solidMesh} from '../shared/arena-geometry.ts';
+import {CEL_GRADIENT,paintedMaterial,toonMaterial,type PaintedSurface} from './materials.ts';
 const cube=new THREE.BoxGeometry(1,1,1);
-const gradient=new THREE.DataTexture(new Uint8Array([110,180,255]),3,1,THREE.RedFormat);
-gradient.minFilter=gradient.magFilter=THREE.NearestFilter;gradient.needsUpdate=true;
+const gradient=CEL_GRADIENT;
 const palette={sand:0xebcd99,stone:0xca8d66,cream:0xf5e5bd,ink:0x263c52,metal:0x497681,teal:0x59cbb9,azure:0x5dbeda,ember:0xef9d5d};
-const material=(color:number)=>new THREE.MeshToonMaterial({color,gradientMap:gradient});
+const material=toonMaterial;
 const materials={ink:material(palette.ink),cream:material(palette.cream),teal:material(palette.teal),metal:material(palette.metal),azure:material(palette.azure),ember:material(palette.ember)};
 const glow=new THREE.MeshBasicMaterial({color:0x98f5dd});
 function box(parent:THREE.Object3D,m:THREE.Material,p:readonly number[],s:readonly number[]):THREE.Mesh{
   const mesh=new THREE.Mesh(cube,m);mesh.position.set(p[0],p[1],p[2]);mesh.scale.set(s[0],s[1],s[2]);parent.add(mesh);return mesh;
 }
-function texture(kind:SurfaceKind):THREE.CanvasTexture {
-  const canvas=document.createElement('canvas');canvas.width=canvas.height=256;const ctx=canvas.getContext('2d')!;
-  const colors={ground:['#d3b386','#ecd2a4'],stone:['#bd7d59','#d7a071'],metal:['#517c84','#75999a'],crate:['#daa462','#f0c381']}[kind];
-  ctx.fillStyle=colors[0];ctx.fillRect(0,0,256,256);
-  for(let i=0;i<24;i++){ctx.fillStyle=colors[1];ctx.globalAlpha=0.18;ctx.fillRect(i*47%256,i*83%256,25+i%5*9,3+i%4);}
-  ctx.globalAlpha=1;ctx.strokeStyle=kind==='stone'?'#a26d50':'#32525f';ctx.lineWidth=3;
-  if(kind==='stone'){for(let y=30;y<256;y+=54){ctx.beginPath();ctx.moveTo(0,y);ctx.bezierCurveTo(80,y+10,160,y-10,256,y);ctx.stroke();}}
-  if(kind==='metal'||kind==='crate'){ctx.strokeRect(8,8,240,240);ctx.fillStyle='#283e50';ctx.fillRect(22,103,212,35);if(kind==='crate'){ctx.fillStyle='#f6cf84';for(let x=12;x<240;x+=40){ctx.beginPath();ctx.moveTo(x,103);ctx.lineTo(x+18,103);ctx.lineTo(x+43,138);ctx.lineTo(x+25,138);ctx.fill();}}}
-  const t=new THREE.CanvasTexture(canvas);t.colorSpace=THREE.SRGBColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=4;return t;
-}
 export function arenaGeometry(solid:ArenaBox):THREE.BufferGeometry {
   const {vertices:v,indices:ix}=solidMesh(solid),positions:number[]=[],uv:number[]=[],colors:number[]=[];
+  const scale=solid.kind==='ground'?14:solid.kind==='stone'?(solid.zone==='cliff'?18:10):solid.zone==='gallery'?3:6;
   for(let face=0;face<ix.length;face+=3){
     const a=ix[face]*3,b=ix[face+1]*3,c=ix[face+2]*3;
     const u=new THREE.Vector3(v[b]-v[a],v[b+1]-v[a+1],v[b+2]-v[a+2]),w=new THREE.Vector3(v[c]-v[a],v[c+1]-v[a+1],v[c+2]-v[a+2]);u.cross(w).normalize();
     const axes=Math.abs(u.y)>0.65?[0,2]:Math.abs(u.x)>Math.abs(u.z)?[2,1]:[0,1];
     const shade=solid.shape==='rock'?0.91+(Math.floor(face/6)%3)*0.055:1;
-    for(let k=0;k<3;k++){const i=ix[face+k]*3;positions.push(v[i],v[i+1],v[i+2]);uv.push(v[i+axes[0]]/4,v[i+axes[1]]/4);colors.push(shade,shade,shade);}
+    for(let k=0;k<3;k++){const i=ix[face+k]*3;positions.push(v[i],v[i+1],v[i+2]);if(solid.kind==='crate')uv.push((v[i+axes[0]]/solid.h[axes[0]]+1)/2,(v[i+axes[1]]/solid.h[axes[1]]+1)/2);
+      else uv.push(v[i+axes[0]]/scale,v[i+axes[1]]/scale);colors.push(shade,shade,shade);}
   }
   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));geometry.computeVertexNormals();
   geometry.rotateY(solid.yaw??0);geometry.translate(...solid.p);return geometry;
@@ -52,9 +44,15 @@ export function buildArena(scene:THREE.Scene):void {
   scene.background=new THREE.Color(0xb8d9d7);scene.fog=new THREE.Fog(0xc8d5c6,100,250);
   scene.add(new THREE.HemisphereLight(0xfff3df,0x626e69,1.4));
   const sun=new THREE.DirectionalLight(0xffe2b0,1.9);sun.name='arena-sun';sun.position.set(-45,80,-35);scene.add(sun);
-  for(const kind of ['ground','stone','metal','crate'] as const){
-    const parts=BOXES.filter(b=>b.kind===kind).map(arenaGeometry),geometry=mergeGeometries(parts)!;for(const part of parts)part.dispose();
-    const mesh=new THREE.Mesh(geometry,new THREE.MeshToonMaterial({map:texture(kind),gradientMap:gradient,vertexColors:true}));mesh.name='arena-'+kind;mesh.castShadow=kind!=='ground';mesh.receiveShadow=true;scene.add(mesh);
+  const groups=new Map<PaintedSurface,ArenaBox[]>();
+  for(const solid of BOXES){
+    const seed=Math.round(Math.abs(solid.p[0]*17+solid.p[2]*11));
+    const surface:PaintedSurface=solid.kind==='ground'?'sand':solid.kind==='crate'?'cargo':solid.kind==='stone'?(seed%5===0?'rose-stone':seed%5===1?'ochre-stone':'sandstone'):solid.zone==='gallery'?'deck':'metal';
+    const batch=groups.get(surface)??[];batch.push(solid);groups.set(surface,batch);
+  }
+  for(const [surface,batch]of groups){
+    const parts=batch.map(arenaGeometry),geometry=mergeGeometries(parts)!;for(const part of parts)part.dispose();
+    const mesh=new THREE.Mesh(geometry,paintedMaterial(surface,true));mesh.name='arena-'+surface;mesh.castShadow=surface!=='sand';mesh.receiveShadow=true;scene.add(mesh);
   }
   const routeMaterial=new THREE.MeshToonMaterial({color:0xefd4a1,gradientMap:gradient});
   for(const points of ROUTES)scene.add(path(points,5.5,routeMaterial));
@@ -62,12 +60,12 @@ export function buildArena(scene:THREE.Scene):void {
   // Ceramic facade plates and graphite seams lie flush on solid walls.
   for(const sign of [-1,1]){
     for(const x of [-7,7]){
-      box(scene,materials.cream,[x,2.8,10.61*sign],[5.6,4.5,0.045]);
+      box(scene,paintedMaterial('ceramic'),[x,2.8,10.61*sign],[5.6,4.5,0.045]);
       box(scene,materials.teal,[x,1.15,10.65*sign],[5.6,0.55,0.045]);
       box(scene,materials.ink,[x,0.35,10.66*sign],[5.8,0.45,0.05]);
     }
     for(const z of [-7,7]){
-      box(scene,materials.cream,[10.61*sign,2.8,z],[0.045,4.5,5.6]);
+      box(scene,paintedMaterial('ceramic'),[10.61*sign,2.8,z],[0.045,4.5,5.6]);
       box(scene,materials.teal,[10.65*sign,1.15,z],[0.045,0.55,5.6]);
     }
     box(scene,materials.ink,[0,6.75,10.65*sign],[21.4,0.45,0.18]);
@@ -82,7 +80,7 @@ export function buildArena(scene:THREE.Scene):void {
       scene.add(group);
     }
     const accent=sign<0?materials.azure:materials.ember;
-    box(scene,accent,[0,2.425,36*sign],[15.7,0.035,7.7]);
+    box(scene,paintedMaterial('deck'),[0,2.425,36*sign],[15.7,0.035,7.7]);
     label(scene,sign<0?'AZURE / GARDEN':'EMBER / GARDEN',[0,1.4,40.035*sign],sign>0?0:Math.PI,6);
     for(const x of [-7.7,7.7])box(scene,materials.cream,[x,2.65,36*sign],[0.12,0.4,7.5]);
     label(scene,sign<0?'01 / CRYSTAL GROTTO':'02 / SUN GROTTO',[43*sign,4.25,5.55*sign],sign>0?Math.PI:0,6.5);
