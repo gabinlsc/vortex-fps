@@ -14,7 +14,7 @@ test('both maps, night and offline sessions work without opening a socket',async
 test('range records hits and replays can be exported and opened; bots and course can restart',async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/?quality=low');await expect(page.locator('#join')).toBeEnabled();
   await page.locator('#training-tools summary').click();await page.locator('#offline-range').click();await expect(page.locator('body')).toHaveClass(/playing/);
-  await page.mouse.down();await expect(page.locator('#training-status')).toContainText('1 touches',{timeout:15000});await page.mouse.up();
+  await page.mouse.move(550,400);await page.keyboard.press('Home');await page.mouse.down();await expect(page.locator('#training-status')).toContainText('1 touches',{timeout:15000});await page.mouse.up();
   await page.evaluate(()=>document.exitPointerLock());const replayPromise=page.waitForEvent('download');await page.locator('#replay-export').click();const download=await replayPromise;await download.saveAs('test-results/expedition-replay.json');
   await page.locator('#leave').click();await page.locator('#replay-import').setInputFiles('test-results/expedition-replay.json');await expect(page.locator('#training-status')).toContainText('RELECTURE');
   await page.keyboard.press('Escape');await page.locator('#offline-bots').click();await expect(page.locator('#training-status')).toContainText('difficulté 2');await page.evaluate(()=>document.exitPointerLock());await page.locator('#leave').click();

@@ -31,7 +31,7 @@ const ambience=new Ambience();let serverEffects:AuthoritativeEffects;
 let training:Training|undefined,photo=false,spectatorId=0,replay:Replay|undefined,replayStart=0,replayCursor=0;const recorder=new Recorder(),adaptive=new AdaptiveResolution();
 let objectiveView:ObjectiveView;
 let selectedMap:MapId='canyon',mapBusy=false;
-let lastTeamPing=-Infinity;let ignoreLook=true;
+let lastTeamPing=-Infinity;let ignoreLook=2;
 let edgeButtons=0,authority:PlayerSnapshot|undefined,hudTime=0;
 let connected=false,accumulator=0,lastFrame=performance.now(),frames=0,fps=0,fpsTime=lastFrame;
 let renderer:THREE.WebGLRenderer,scene:THREE.Scene,camera:THREE.PerspectiveCamera,showroom:Showroom,viewWeapon:ViewWeapon;
@@ -106,7 +106,7 @@ function resetSession():void {
   menu.hidden=false;join.disabled=false;refreshLoadout();
 }
 element('leave').addEventListener('click',()=>{const old=ws;ws=undefined;old?.close(1000,'Left match');resetSession();status.textContent='Prêt pour une nouvelle partie.';});
-document.addEventListener('pointerlockchange',()=>{const active=document.pointerLockElement===canvas;menu.hidden=active;ignoreLook=true;keys.clear();buttons=0;edgeButtons=0;});
+document.addEventListener('pointerlockchange',()=>{const active=document.pointerLockElement===canvas;menu.hidden=active;ignoreLook=2;keys.clear();buttons=0;edgeButtons=0;});
 function updateButtons():void {
   buttons=Number(keys.has('KeyW')||keys.has('KeyZ'))*Button.Forward|Number(keys.has('KeyS'))*Button.Back|
     Number(keys.has('KeyA')||keys.has('KeyQ'))*Button.Left|Number(keys.has('KeyD'))*Button.Right|
@@ -119,6 +119,7 @@ addEventListener('keydown',e=>{
   if(document.pointerLockElement!==canvas||!self)return;e.preventDefault();keys.add(e.code);
   if(!e.repeat&&e.code==='KeyR')edgeButtons|=Button.Reload;if(!e.repeat&&e.code==='Space')edgeButtons|=Button.Jump;
   if(e.code==='KeyG'&&!e.repeat&&performance.now()-lastTeamPing>2100&&(latest?.players.find(p=>p.id===self)?.team??0)>0&&ws?.readyState===WebSocket.OPEN){const d=new THREE.Vector3();camera.getWorldDirection(d);const range=traceSolids(camera.position,d,getMap(selectedMap).boxes.map(solidQuery),60),p=camera.position.clone().addScaledVector(d,range);p.y=Math.max(0,Math.min(30,p.y));if(Math.abs(p.x)<=63&&Math.abs(p.z)<=63){ws.send(JSON.stringify({type:'ping',p:{x:p.x,y:p.y,z:p.z}}));lastTeamPing=performance.now();}}
+  if(e.code==='Home'&&training?.mode==='range'){yaw=0;pitch=0;}
   if(e.code==='KeyP'&&photo){renderer.render(scene,camera);canvas.toBlob(blob=>{if(blob)download(blob,'vortex-photo.png');},'image/png');}
   if((e.code==='ArrowRight'||e.code==='ArrowLeft')&&latest?.players.find(p=>p.id===self)?.health===0){const ids=latest.players.filter(p=>p.id!==self&&p.health>0).map(p=>p.id),index=ids.indexOf(spectatorId);spectatorId=ids[(index+(e.code==='ArrowRight'?1:ids.length-1)+ids.length)%ids.length]??0;}
   if(e.code==='Digit1')weapon=0;if(e.code==='Digit2')weapon=1;
@@ -128,7 +129,7 @@ addEventListener('keyup',e=>{keys.delete(e.code);if(e.code==='Tab')element('scor
 element('open-scores').onclick=()=>{element('scoreboard').hidden=false;};
 element('close-scores').onclick=()=>{element('scoreboard').hidden=true;};
 addEventListener('blur',()=>{keys.clear();buttons=0;element('scoreboard').hidden=true;});
-addEventListener('mousemove',e=>{if(document.pointerLockElement!==canvas||!self)return;if(ignoreLook){ignoreLook=false;return;}yaw-=e.movementX*0.002*settings.sensitivity;pitch=Math.max(-Math.PI/2,Math.min(Math.PI/2,pitch-e.movementY*0.002*settings.sensitivity));});
+addEventListener('mousemove',e=>{if(document.pointerLockElement!==canvas||!self)return;if(ignoreLook>0){ignoreLook--;return;}if(Math.abs(e.movementX)>innerWidth/2||Math.abs(e.movementY)>innerHeight/2)return;yaw-=e.movementX*0.002*settings.sensitivity;pitch=Math.max(-Math.PI/2,Math.min(Math.PI/2,pitch-e.movementY*0.002*settings.sensitivity));});
 canvas.addEventListener('wheel',e=>{if(document.pointerLockElement!==canvas||!self)return;e.preventDefault();weapon=1-weapon;refreshLoadout();},{passive:false});
 canvas.addEventListener('mousedown',e=>{if(e.button===0&&!photo&&document.pointerLockElement===canvas&&self){buttons|=Button.Fire;edgeButtons|=Button.Fire;}});
 addEventListener('mouseup',e=>{if(e.button===0)buttons&=~Button.Fire;});
@@ -269,7 +270,7 @@ function frame(now:number):void{
   if(document.hidden)return;
   renderer.render(scene,camera);if(active&&!photo&&(training?.mode==='range'||training?.mode==='bots'||!training)&&me&&me.health>0)viewWeapon.render(renderer);else if(!self&&!replay)showroom.render(renderer,now/1000,character,weapon);
   if(performance.now()-started>1000)console.warn('Vortex slow frame',Math.round(performance.now()-started),predictor.pending.length);
-  if((document.getElementById('adaptive-toggle') as HTMLInputElement)?.checked&&!document.hidden){const scale=adaptive.step(elapsed*1000,now),base=settings.quality==='low'?0.6:Math.min(devicePixelRatio,settings.quality==='high'?1.75:1.25);if(Math.abs(renderer.getPixelRatio()-base*scale)>0.02)renderer.setPixelRatio(base*scale);}
+  if((document.getElementById('adaptive-toggle') as HTMLInputElement)?.checked&&!document.hidden){const scale=adaptive.step(elapsed*1000,now),base=new URLSearchParams(location.search).get('quality')==='low'||settings.quality==='low'?0.6:Math.min(devicePixelRatio,settings.quality==='high'?1.75:1.25);if(Math.abs(renderer.getPixelRatio()-base*scale)>0.02)renderer.setPixelRatio(base*scale);}
   frames++;if(now-fpsTime>=500){fps=Math.round(frames*1000/(now-fpsTime));frames=0;fpsTime=now;element('performance').textContent=fps+' FPS · '+(latest?.rttMs??0).toFixed(0)+' ms'+(predictor.pending.length>=64?' · SYNCHRONISATION':'');}
 }
 let send:Input[]=[];

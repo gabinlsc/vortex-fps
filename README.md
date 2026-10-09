@@ -84,3 +84,5 @@ Sélectionner **Rift Canyon** ou **Tidal Harbor**, puis FFA, TDM, Domination ou 
 Le volet **Exploration et entraînement hors ligne** propose visite, stand de tir, bots et parcours chronométré. Échap ouvre le menu ; le mode photo utilise ZQSD/WASD, Espace/C pour monter/descendre, Shift pour accélérer, et **P** pour exporter un PNG. Le menu permet de régler la focale, exporter une relecture ou ouvrir son JSON. Échap quitte le lecteur de relecture. Pendant la réapparition en multijoueur, les flèches changent le joueur suivi.
 
 Les réglages ajoutent jour/nuit, faune et résolution adaptative. Voir [les 40 ajouts](docs/FEATURES.md), [le contrat réseau](docs/NETWORK-EXPEDITION.md) et [la provenance de la texture](docs/TEXTURE-ART.md). Cette version utilise la carte `rift-expedition-6` : publier client et serveur ensemble.
+
+Au stand, **Home / Début** recentre la visée. Les mouvements de souris anormaux de capture sont ignorés. La résolution adaptative respecte le preset forcé par ?quality=low.
