@@ -119,7 +119,7 @@ addEventListener('keydown',e=>{
   if(document.pointerLockElement!==canvas||!self)return;e.preventDefault();keys.add(e.code);
   if(!e.repeat&&e.code==='KeyR')edgeButtons|=Button.Reload;if(!e.repeat&&e.code==='Space')edgeButtons|=Button.Jump;
   if(e.code==='KeyG'&&!e.repeat&&performance.now()-lastTeamPing>2100&&(latest?.players.find(p=>p.id===self)?.team??0)>0&&ws?.readyState===WebSocket.OPEN){const d=new THREE.Vector3();camera.getWorldDirection(d);const range=traceSolids(camera.position,d,getMap(selectedMap).boxes.map(solidQuery),60),p=camera.position.clone().addScaledVector(d,range);p.y=Math.max(0,Math.min(30,p.y));if(Math.abs(p.x)<=63&&Math.abs(p.z)<=63){ws.send(JSON.stringify({type:'ping',p:{x:p.x,y:p.y,z:p.z}}));lastTeamPing=performance.now();}}
-  if(e.code==='Home'&&training?.mode==='range'){yaw=0;pitch=0;}
+  if(e.code==='Home'&&training?.mode==='range'){yaw=0;pitch=0;ignoreLook=2;}
   if(e.code==='KeyP'&&photo){renderer.render(scene,camera);canvas.toBlob(blob=>{if(blob)download(blob,'vortex-photo.png');},'image/png');}
   if((e.code==='ArrowRight'||e.code==='ArrowLeft')&&latest?.players.find(p=>p.id===self)?.health===0){const ids=latest.players.filter(p=>p.id!==self&&p.health>0).map(p=>p.id),index=ids.indexOf(spectatorId);spectatorId=ids[(index+(e.code==='ArrowRight'?1:ids.length-1)+ids.length)%ids.length]??0;}
   if(e.code==='Digit1')weapon=0;if(e.code==='Digit2')weapon=1;
