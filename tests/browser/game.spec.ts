@@ -54,3 +54,18 @@ test('comfort settings persist and the lobby fits a narrow screen',async({page})
   await page.screenshot({path:'test-results/mobile-settings.png'});
   expect(errors).toEqual([]);
 });
+
+test('graphics presets can be changed without losing the canyon lobby',async({page})=>{
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.addInitScript(()=>localStorage.setItem('vortex-settings',JSON.stringify({quality:'low',reducedMotion:true})));
+  await page.goto('/');await expect(page.locator('#join')).toBeEnabled({timeout:15000});
+  await expect(page.locator('.map-card small')).toContainText('canyon');
+  await page.locator('#settings summary').click();
+  for(const quality of ['medium','high','low']){
+    await page.locator('#setting-quality').selectOption(quality);await expect(page.locator('#setting-quality')).toHaveValue(quality);
+    await expect(page.locator('#join')).toBeEnabled();
+    expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('vortex-settings')!).quality)).toBe(quality);
+    if(quality==='high')await page.screenshot({path:'test-results/canyon-lobby-high.png'});
+  }
+  expect(errors).toEqual([]);
+});

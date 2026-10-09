@@ -10,8 +10,8 @@ const pair=(p:VecTuple,h:VecTuple,kind:SurfaceKind='metal',shape?:ArenaBox['shap
 };
 add([0,-0.5,0],[64,0.5,64],'ground');
 // Solid canyon limits have a faceted skyline rather than a visible fortress wall.
-for(const x of [-64,64])add([x,4,0],[1,4,64],'stone',undefined,0,'boundary');
-for(const z of [-64,64])add([0,4,z],[64,4,1],'stone',undefined,0,'boundary');
+for(const x of [-64,64])add([x,2,0],[1,2,64],'stone',undefined,0,'boundary');
+for(const z of [-64,64])add([0,2,z],[64,2,1],'stone',undefined,0,'boundary');
 for(let i=0;i<5;i++){
   const offset=-48+i*24,height=11+(i%3)*3;
   pair([75,height,offset],[12,height,15],'stone','rock',0,'cliff');
@@ -37,6 +37,11 @@ pair([18,1,24],[0.6,1,0.6]);
 pair([28,1,18],[0.6,1,0.6]);
 pair([0,2.95,36],[1.8,0.55,1],'crate');
 pair([-5,2.95,37],[1.2,0.55,1.2],'crate');
+// Real planter and trunk colliders anchor the garden vegetation.
+for(const x of [-5,5]){
+  pair([x,2.8,34],[1,0.4,1],'metal',undefined,0,'planter');
+  pair([x,4.75,34],[0.28,1.55,0.28],'stone','rock',0,'tree');
+}
 // Caves are convex stone shells with two side exits and a broad front entrance.
 for(const sign of [-1,1]){
   const x=43*sign,z=18*sign;

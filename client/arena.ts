@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {BOXES,ROUTES,SPAWNS,type ArenaBox,type SurfaceKind} from '../shared/map.ts';
 import {solidMesh} from '../shared/arena-geometry.ts';
+import {buildLandscape,animateLandscape} from './landscape.ts';
 import {CEL_GRADIENT,paintedMaterial,toonMaterial,type PaintedSurface} from './materials.ts';
 const cube=new THREE.BoxGeometry(1,1,1);
 const gradient=CEL_GRADIENT;
@@ -42,12 +43,12 @@ function path(points:readonly (readonly [number,number])[],width:number,m:THREE.
 }
 export function buildArena(scene:THREE.Scene):void {
   scene.background=new THREE.Color(0xb8d9d7);scene.fog=new THREE.Fog(0xc8d5c6,100,250);
-  scene.add(new THREE.HemisphereLight(0xfff3df,0x626e69,1.4));
-  const sun=new THREE.DirectionalLight(0xffe2b0,1.9);sun.name='arena-sun';sun.position.set(-45,80,-35);scene.add(sun);
+  scene.add(new THREE.HemisphereLight(0xfff3df,0x626e69,1.05));
+  const sun=new THREE.DirectionalLight(0xffe2b0,2.2);sun.name='arena-sun';sun.position.set(-45,80,-35);scene.add(sun);
   const groups=new Map<PaintedSurface,ArenaBox[]>();
   for(const solid of BOXES){
     const seed=Math.round(Math.abs(solid.p[0]*17+solid.p[2]*11));
-    const surface:PaintedSurface=solid.kind==='ground'?'sand':solid.kind==='crate'?'cargo':solid.kind==='stone'?(seed%5===0?'rose-stone':seed%5===1?'ochre-stone':'sandstone'):solid.zone==='gallery'?'deck':'metal';
+    const surface:PaintedSurface=solid.kind==='ground'?'sand':solid.kind==='crate'?'cargo':solid.kind==='stone'?(solid.zone==='tree'?'bark':seed%5===0?'rose-stone':seed%5===1?'ochre-stone':'sandstone'):solid.zone==='gallery'?'deck':'metal';
     const batch=groups.get(surface)??[];batch.push(solid);groups.set(surface,batch);
   }
   for(const [surface,batch]of groups){
@@ -101,9 +102,9 @@ export function buildArena(scene:THREE.Scene):void {
     const angle=i/20*Math.PI*2,height=20+i%5*5,mountain=new THREE.Mesh(new THREE.CylinderGeometry(6+i%4,16,height,6),mountainMaterial);
     mountain.position.set(Math.cos(angle)*130,height/2-3,Math.sin(angle)*130);scene.add(mountain);
   }
-  const shrubGeometry=new THREE.IcosahedronGeometry(0.35,0),shrubs=new THREE.InstancedMesh(shrubGeometry,material(0x76a68b),150),pose=new THREE.Object3D();
-  for(let i=0;i<150;i++){const x=(i*73%119)-59,z=(i*41%119)-59;pose.position.set(x,0.2,z);pose.scale.set(0.9+i%3*0.2,0.8,0.9);pose.updateMatrix();shrubs.setMatrixAt(i,pose.matrix);}scene.add(shrubs);
+  buildLandscape(scene);
 }
 export function animateArena(scene:THREE.Scene,time:number):void {
+  animateLandscape(scene,time);
   const core=scene.getObjectByName('rift-core');if(core){core.rotation.y=time*0.3;core.position.y=9.2+Math.sin(time*1.4)*0.12;}
 }

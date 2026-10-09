@@ -1,18 +1,20 @@
-# Validation Vortex 0.4
+﻿# Validation Vortex 0.5
 
-Validation locale Windows / Node.js 24.19.0, le 5 octobre 2026 :
+Validation locale Windows / Node.js 24.19.0, le 9 octobre 2026 :
 
-- 28 tests unitaires : mouvement, codecs, combat, symétrie et spawns, compteur de tirs, validation des réglages.
-- 6 tests d'intégration et réseau : replay Rapier, snapshots, stabilité des spawns, accès aux deux parcours de toit, serveur réel, isolation FFA/TDM et chargeurs.
-- Build TypeScript, Vite et serveur esbuild.
-- 2 scénarios Chromium / WebGL logiciel : partie multijoueur, classement, changement d'arme, tir, rechargement, changement de salon ; réglages persistants et interface sur écran 390 × 844.
+- 29 tests unitaires : mouvement, codecs, combat, symétrie et spawns, compteur de tirs, réglages et intersections des solides convexes.
+- 8 tests d'intégration et réseau : replay Rapier, snapshots, stabilité des spawns, accès aux jardins et au toit sans saut dans les deux sens, comparaison de 80 rayons avec les collisions Rapier, serveur réel, isolation FFA/TDM et chargeurs.
+- Build TypeScript, Vite et serveur esbuild réussi.
+- 3 scénarios Chromium / WebGL logiciel : partie multijoueur, classement, armes, tir, rechargement et changement de salon ; réglages persistants et interface 390 × 844 ; changements de qualité faible, moyenne, haute puis faible.
 
-Les captures dans `test-results/` sont examinées pour vérifier le lobby, le HUD, l'arène et les réglages mobiles. La CI les conserve dans vortex-browser-review.
+Soit 40 tests réussis. Les captures du lobby, du HUD et des réglages mobiles sont produites dans `test-results/`. La CI conserve les captures navigateur dans vortex-browser-review.
 
-Les nouveaux parcours sont traversés avec le contrôleur physique réel en maintenant déplacement et saut. Le test couvre les deux côtés symétriques. Le serveur utilise exactement les mêmes solides que le rendu et la prédiction.
+`npm run review:map` produit cinq vues contrôlées : ensemble du canyon, place, grotte, jardin et toit. Elles ont été examinées pour vérifier les textures, la disposition du décor et les ombres. `npm run review:map -- low` permet une revue sans shadow maps.
 
-Les effets de tir sont cosmétiques, reconstruits depuis les snapshots existants ; voir README pour leurs limites de synchronisation. Les marqueurs de touche suivent les hits confirmés. Les scénarios navigateur ne mesurent pas la fidélité balistique des traînées.
+La géométrie des rochers et rampes est partagée entre rendu, physique et rayons de tir. Les parcours sont traversés avec le contrôleur physique réel, sans saut ; les deux côtés symétriques et les descentes sont couverts. La végétation décorative reste traversable, à l'exception des quatre troncs des jardins qui ont des collisions partagées.
 
-Le rendu groupe les solides en quatre meshes avec UV à échelle constante et trois groupes de contours instanciés. Les effets utilisent des pools bornés. Cela ne constitue pas un benchmark matériel à 144 FPS ni une qualification de charge à 16 joueurs.
+Les traînées de tir restent cosmétiques, reconstruites depuis les snapshots existants ; voir README pour leurs limites de synchronisation. Les marqueurs de touche suivent les hits confirmés. Les tests navigateur ne mesurent pas la fidélité balistique des traînées.
 
-L'API de matchmaking, OIDC et l'infrastructure de publication gardent leur périmètre décrit dans ARCHITECTURE.md.
+Le rendu regroupe les solides par matériau et instancie les plantes. La qualité faible désactive les shadow maps et réduit la végétation ; les qualités moyenne et haute utilisent des cartes d'ombres de 1024 et 2048 pixels. Les animations d'ambiance respectent le réglage de réduction des animations. Ces vérifications ne constituent ni un benchmark matériel à 144 FPS ni une qualification de charge à 16 joueurs. Vite signale toujours un bundle client supérieur à 500 kB, incluant Three.js et Rapier.
+
+Le périmètre de matchmaking, OIDC et publication décrit dans ARCHITECTURE.md est conservé.

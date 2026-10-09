@@ -21,6 +21,16 @@ Le serveur de développement est limité à 127.0.0.1. Pour une publication, con
 | Recharger | R |
 | Classement et joueurs | Maintenir Tab |
 | Menu / reprendre | Échap / bouton Reprendre |
+## Nouveautés 0.5
+
+- Canyon à falaises et rochers convexes, place centrale, galeries et grottes à plusieurs entrées.
+- Rampes accessibles en marchant vers les toits et les jardins ; couvertures réparties sur les chemins sinueux.
+- Huit surfaces peintes et écorce : sable, grès de plusieurs teintes, métal, céramique, ravitaillement et caillebotis.
+- Ciel dégradé, soleil, nuages, arbres en jardinières, végétation, bassins minéraux et éclairage des grottes.
+- Ombres en qualité équilibrée/haute ; ombres de contact et végétation allégée en qualité légère.
+- Géométrie identique pour les collisions, tirs et rendu.
+- `npm run review:map` génère cinq captures de contrôle. Détails dans [CANYON.md](docs/CANYON.md), idées à valider dans [FEATURES.md](docs/FEATURES.md).
+
 ## Nouveautés 0.4
 
 - Textures peintes, ombrage cartoon, contours et environnement lumineux.
@@ -30,9 +40,9 @@ Le serveur de développement est limité à 127.0.0.1. Pour une publication, con
 - `npm run play` lance client et serveur ensemble. Ctrl+C arrête les deux.
 
 ## Carte
-Rift Outpost mesure 128 × 128 m. Le sol est continu, avec des limites solides, un avant-poste intérieur à quatre entrées, deux grottes avec toit et alcôves, clusters rocheux, plateformes basses et caisses.
-Les surfaces utilisent des textures cartoon procédurales déterministes, générées localement : aucun téléchargement de modèle ou de texture n'est nécessaire.
-Les parcours vers le toit sont testés avec Rapier et le contrôleur réel, sans autostep. Les jardins offrent des plateformes à 2,4 m de hauteur ; le toit culmine à 7 m.
+Rift Canyon mesure 128 × 128 m. Un canyon de grès entoure une place centrale abritée, un réacteur sur le toit, deux jardins surélevés et deux grottes connectées par des galeries.
+Les surfaces cartoon sont générées localement, avec des UV à échelle physique constante et une composition complète sur les caisses. Aucun téléchargement d'asset n'est requis.
+Les solides convexes sont partagés entre rendu, Rapier et tirs serveur. Les rampes vers les jardins à 2,4 m et le toit à 7 m sont testées sans saut ; les tirs sont comparés aux raycasts Rapier.
 
 Douze spawns validés hors des solides. Le serveur choisit celui qui maximise la distance au plus proche adversaire ; en équipe, il respecte la moitié nord/sud.
 Réapparition après deux secondes, protection d'une seconde. Le serveur replace aussi les joueurs tombés hors carte.
@@ -60,7 +70,7 @@ npx playwright install --with-deps chromium
 npm run test:e2e
 ```
 La CI exécute les tests purs, Rapier/FlatBuffers, le serveur WebSocket réel et le navigateur Chromium avec WebGL logiciel. Les captures et traces sont dans l'artefact vortex-browser-review.
-L'ABI inputs passe à v2 (bit Reload) ; snapshots VTX2. Carte `rift-outpost-4` : client et serveur doivent être mis à jour ensemble.
+L'ABI inputs passe à v2 (bit Reload) ; snapshots VTX2. Carte `rift-canyon-5` : client et serveur doivent être mis à jour ensemble.
 Les cibles 144 FPS et 128 ticks demandent encore un benchmark matériel et une qualification sous charge ; un workflow vert ne constitue pas ce benchmark.
 ## Architecture
 shared/ : carte, règles, mouvement, armes et ABI. server/ : simulation, combats, admission et Agones.

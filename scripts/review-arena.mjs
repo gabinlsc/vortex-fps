@@ -2,6 +2,7 @@
 import {chromium} from '@playwright/test';
 import {fileURLToPath} from 'node:url';
 import {mkdir} from 'node:fs/promises';
+const quality=process.argv[2]==='low'?'low':'high';
 const cwd=fileURLToPath(new URL('../',import.meta.url)),port=4185,url=`http://127.0.0.1:${port}`;
 const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd,stdio:['ignore','pipe','pipe']});
 let logs='';server.stdout.on('data',d=>logs+=String(d));server.stderr.on('data',d=>logs+=String(d));
@@ -14,13 +15,14 @@ try{
   page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/arena-review',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><body style="margin:0"><canvas id="review"></canvas></body>'}));
   await page.goto(url+'/arena-review');
-  await page.evaluate(async()=>{
+  await page.evaluate(async(quality)=>{
     const THREE=await import('/node_modules/.vite/deps/three.js');
     const {buildArena,animateArena}=await import('/client/arena.ts');
+    const {configureArenaQuality}=await import('/client/landscape.ts');
     const renderer=new THREE.WebGLRenderer({canvas:document.getElementById('review'),antialias:true,preserveDrawingBuffer:true});renderer.setSize(1440,900);renderer.toneMapping=THREE.ACESFilmicToneMapping;
-    const scene=new THREE.Scene();buildArena(scene);animateArena(scene,2);const camera=new THREE.PerspectiveCamera(70,1440/900,0.05,300);
+    const scene=new THREE.Scene();buildArena(scene);configureArenaQuality(renderer,scene,quality);animateArena(scene,2);const camera=new THREE.PerspectiveCamera(70,1440/900,0.05,300);
     window.renderReview=(position,target)=>{camera.position.set(...position);camera.lookAt(...target);renderer.render(scene,camera);return {calls:renderer.info.render.calls,triangles:renderer.info.render.triangles};};
-  });
+  },quality);
   await mkdir(new URL('../test-results/map-review/',import.meta.url),{recursive:true});
   for(const [name,position,target]of [['overview',[54,36,58],[0,3,0]],['plaza',[0,2,-26],[0,6,0]],['grotto',[42,1.7,5],[43,2.3,19]],['garden',[-7,5.2,-45],[0,3,-28]],['roof',[7,8.6,-7],[0,9,0]]]){
     const metrics=await page.evaluate(({position,target})=>window.renderReview(position,target),{position,target});
