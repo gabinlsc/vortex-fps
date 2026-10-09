@@ -4,6 +4,17 @@ import {createArena,RapierMotor} from '../shared/physics.ts';
 import {initialState,copyState} from '../shared/movement.ts';
 import {Button,canonical} from '../shared/input.ts';
 import {encodeSnapshot,decodeSnapshot} from '../shared/snapshot.ts';
+import {getMap} from '../shared/maps.ts';
+test('actual motor activates jump pads and portals without repeated teleporting',async()=>{
+  const world=await createArena(),m=new RapierMotor(world,initialState(-20,1.05,12),new Set());try{let launched=false;for(let seq=1;seq<=64;seq++){m.tick(canonical({seq,yaw:0,pitch:0,buttons:0,weapon:0,phase:0}));world.step();if(m.state.v.y>10)launched=true;}assert.ok(launched);assert.ok(m.state.p.y>2);m.restore(initialState(-40,1.05,0));world.step();m.tick(canonical({seq:65,yaw:0,pitch:0,buttons:0,weapon:0,phase:0}));world.step();assert.equal(m.state.p.x,40);m.tick(canonical({seq:66,yaw:0,pitch:0,buttons:0,weapon:0,phase:0}));assert.ok(m.state.p.x>39);}finally{m.dispose();world.free();}
+});
+test('Expedition bridges, terraces, freight and scaffold ramps are physically reachable',async()=>{
+  const paths=[{p:[34,1.05,34],yaw:-Math.PI/2,axis:'x',goal:54,height:3.7},{p:[-34,1.05,-34],yaw:Math.PI/2,axis:'x',goal:-54,height:3.7},{p:[54,1.05,4],yaw:Math.PI,axis:'z',goal:26,height:3.7},{p:[62,1.05,43],yaw:Math.PI/2,axis:'x',goal:40,height:5.1},{p:[-43,1.05,-62],yaw:Math.PI,axis:'z',goal:-51,height:1.3}];
+  for(const path of paths){const world=await createArena(),motor=new RapierMotor(world,initialState(path.p[0],path.p[1],path.p[2]),new Set());try{let reached=false;for(let seq=1;seq<=1400;seq++){motor.tick(canonical({seq,yaw:path.yaw,pitch:0,buttons:Button.Forward,weapon:0,phase:0}));world.step();const p=motor.state.p;if(Math.abs((path.axis==='x'?p.x:p.z)-path.goal)<1&&p.y>path.height){reached=true;break;}}assert.ok(reached,JSON.stringify({path,p:motor.state.p}));}finally{motor.dispose();world.free();}}
+});
+test('Harbor spawns and its raised central deck have real shared collisions',async()=>{
+  const world=await createArena('harbor');try{for(const spawn of getMap('harbor').spawns){const m=new RapierMotor(world,initialState(...spawn),new Set(),'harbor');for(let seq=1;seq<=128;seq++){m.tick(canonical({seq,yaw:0,pitch:0,buttons:0,weapon:0,phase:0}));world.step();}assert.ok(m.state.grounded);m.dispose();}const m=new RapierMotor(world,initialState(33,1.05,0),new Set(),'harbor');for(let seq=1;seq<=400;seq++){m.tick(canonical({seq,yaw:Math.PI/2,pitch:0,buttons:Button.Forward,weapon:0,phase:0}));world.step();if(m.state.p.x<9&&m.state.p.y>4.7)break;}assert.ok(m.state.p.y>4.7);m.dispose();}finally{world.free();}
+});
 test('same WASM simulation and restored replay produce matching positions',async()=>{
   const worlds=await Promise.all([createArena(),createArena()]);
   const motors=worlds.map(w=>new RapierMotor(w,initialState(0,1,10),new Set()));

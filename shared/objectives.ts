@@ -22,7 +22,7 @@ export function updateObjectives(state:Objectives,players:ObjectivePlayer[],mode
       for(const p of alive){if(!near(p.p,flag.p,1.6))continue;if(p.team!==flag.team){flag.carrier=p.id;flag.returnAt=0;break;}if(flag.returnAt){flag.returnAt=0;flag.p={...bases[flag.team]};}}
     }
   }
-  for(const item of state.pickups){if(tick<item.readyAt)continue;const p=alive.find(p=>near(p.p,item.p,1.4)&&(item.kind!=='health'||p.health<100));if(!p)continue;
+  for(const item of state.pickups){if(tick<item.readyAt)continue;const p=alive.find(p=>near(p.p,item.p,1.4)&&(item.kind==='health'?p.health<100:p.magazines[item.kind==='rail'?0:1]<(item.kind==='rail'?6:24)));if(!p)continue;
     if(item.kind==='health')p.health=Math.min(100,p.health+35);else p.magazines[item.kind==='rail'?0:1]=item.kind==='rail'?6:24;item.readyAt=tick+20*hz;
   }
 }

@@ -13,6 +13,8 @@ import {AuthoritativeEffects} from './authoritative-effects.ts';
 export type OfflineMode='visit'|'range'|'bots'|'course';
 export class Training {
   readonly group=new THREE.Group();readonly inventory=newInventory();health=100;kills=0;shots=0;hits=0;reaction=0;checkpoint=0;courseStart=0;finished=0;
+  private lastInput:Input={seq:0,yaw:0,pitch:0,buttons:0,weapon:0,phase:0};
+  set effectsEnabled(value:boolean){this.effects.enabled=value;}
   private tick=0;private nextShot=0;private nextId=1;private shotIndex=0;private pathfind:ReturnType<typeof navigation>;private queries;private projectiles:Projectile[]=[];
   private targets:{mesh:THREE.Mesh;spawned:number}[]=[];private bots:{motor:RapierMotor;mesh:THREE.Group;health:number;respawn:number;path:{x:number;y:number;z:number}[];nextFire:number}[]=[];
   private effects:AuthoritativeEffects;private checkpoints=[[0,1,-44],[-18,1,-18],[0,8,0],[18,1,18],[0,1,44]];
@@ -23,7 +25,7 @@ export class Training {
     if(mode==='course')for(const [i,p]of this.checkpoints.entries()){const ring=new THREE.Mesh(new THREE.TorusGeometry(2,0.09,6,24),new THREE.MeshBasicMaterial({color:0x7fe8c3}));ring.position.set(p[0],p[1]+0.5,p[2]);ring.name='checkpoint-'+i;this.group.add(ring);}
   }
   step(input:Input):void {
-    this.tick++;this.player.tick(input);updateInventory(this.inventory,this.tick,input.weapon,Boolean(input.buttons&Button.Reload));
+    this.tick++;this.lastInput=input;this.player.tick(input);updateInventory(this.inventory,this.tick,input.weapon,Boolean(input.buttons&Button.Reload));
     if(this.health<=0){this.health=100;this.player.restore(initialState(0,1.05,-44));}
     if(this.player.state.p.y<-5||Math.abs(this.player.state.p.x)>63||Math.abs(this.player.state.p.z)>63)this.player.restore(initialState(0,1.05,-44));
     const time=this.tick*DT;
@@ -51,7 +53,7 @@ export class Training {
     if(hit||target){this.hits++;this.effects.impact(to,'flesh',time);if(hit){hit.health-=damage;if(hit.health<=0){this.kills++;hit.respawn=this.tick+256;}}if(target){this.reaction=(time-target.spawned)*1000;target.spawned=time;target.mesh.position.x=-8+(this.hits*7%17);target.mesh.position.y=1.3+(this.hits%3)*0.6;}return true;}
     if(distance<range){this.effects.impact(to,'stone',time);return true;}return false;
   }
-  snapshot():Snapshot {return {tick:this.tick,time:this.tick*DT,self:1,rttMs:0,mode:0,remaining:600,players:[{id:1,ack:0,state:copyState(this.player.state),yaw:0,pitch:0,health:this.health,epoch:0,hits:this.hits,name:'Entraînement',kills:this.kills,magazines:this.inventory.magazines,reloadLeft:Math.max(0,this.inventory.reloadUntil-this.tick),reloadWeapon:this.inventory.reloadWeapon,shotIndex:this.shotIndex}]};}
+  snapshot():Snapshot {return {tick:this.tick,time:this.tick*DT,self:1,rttMs:0,mode:0,remaining:600,players:[{id:1,ack:0,state:copyState(this.player.state),yaw:this.lastInput.yaw,pitch:this.lastInput.pitch,weapon:this.lastInput.weapon,health:this.health,epoch:0,hits:this.hits,name:'Entraînement',kills:this.kills,magazines:this.inventory.magazines,reloadLeft:Math.max(0,this.inventory.reloadUntil-this.tick),reloadWeapon:this.inventory.reloadWeapon,shotIndex:this.shotIndex},...this.bots.map((b,i)=>({id:i+2,ack:0,state:copyState(b.motor.state),yaw:b.mesh.rotation.y,pitch:0,health:Math.max(0,b.health),epoch:0,hits:0,name:'BOT '+(i+1),character:i%3}))]};}
   label():string {if(this.mode==='range')return `${this.hits} touches / ${this.shots} tirs · réaction ${Math.round(this.reaction)} ms`;if(this.mode==='course')return this.finished?`Arrivée ${this.finished.toFixed(2)} s · record ${Number(localStorage.getItem('vortex-course-'+this.mapId)).toFixed(2)} s`:`Porte ${this.checkpoint+1}/5 · ${this.courseStart?(this.tick*DT-this.courseStart).toFixed(2):'0.00'} s`;return this.mode==='bots'?`${this.kills} éliminations · difficulté ${this.difficulty}`:'Visite libre · Échap : menu';}
-  dispose():void {this.effects.clear();for(const b of this.bots){b.motor.dispose();disposeName(b.mesh);}this.group.traverse(o=>{if(o instanceof THREE.Mesh&&this.targets.some(t=>t.mesh===o)){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.scene.remove(this.group);}
+  dispose():void {this.effects.clear();for(const b of this.bots){b.motor.dispose();disposeName(b.mesh);}this.group.traverse(o=>{if(o instanceof THREE.Mesh&&this.targets.some(t=>t.mesh===o)){o.geometry.dispose();(o.material as THREE.Material).dispose();}});for(const object of this.group.children)if(object instanceof THREE.Mesh&&!this.targets.some(t=>t.mesh===object)){object.geometry.dispose();(object.material as THREE.Material).dispose();}this.scene.remove(this.group);}
 }

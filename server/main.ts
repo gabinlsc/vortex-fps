@@ -47,7 +47,7 @@ function respawn(p:Peer):void {
   p.motor.restore(initialState(spawn[0],spawn[1],spawn[2]));p.last={...p.last,buttons:0};
 }
 function event(mode:GameMode,data:Record<string,unknown>,mapId:MapId='canyon'):void {
-  const message=JSON.stringify(data);for(const p of peers.values())if(p.mode===mode&&p.mapId===mapId&&p.ws.readyState===WebSocket.OPEN&&p.ws.bufferedAmount<65536)p.ws.send(message);
+  const message=JSON.stringify({...data,time:tick*DT});for(const p of peers.values())if(p.mode===mode&&p.mapId===mapId&&p.ws.readyState===WebSocket.OPEN&&p.ws.bufferedAmount<65536)p.ws.send(message);
 }
 
 function wallDistance(o:{x:number;y:number;z:number},d:{x:number;y:number;z:number},range=200,mapId:MapId='canyon'):number {
@@ -94,9 +94,9 @@ function fixedTick():void {
     if(p.health>0&&(p.motor.state.p.y<-5||Math.abs(p.motor.state.p.x)>63||Math.abs(p.motor.state.p.z)>63))respawn(p);
     if(p.health<=0)p.last={...p.last,buttons:0};
     updateInventory(p.inventory,tick,p.last.weapon,Boolean(p.last.buttons&Button.Reload));
-    p.motor.tick(p.last);commands.set(p.id,cmd);
+    const before={...p.motor.state.p};p.motor.tick(p.last);if(Math.hypot(p.motor.state.p.x-before.x,p.motor.state.p.z-before.z)>20)p.epoch++;commands.set(p.id,cmd);
   }
-  world.step();
+  for(const w of worlds.values())w.step();
   history.push({time:tick*DT,boxes:[...peers.values()].map(p=>bodyHitbox(p.id,p.epoch,{...p.motor.state.p},p.motor.state.crouched))});
   for(const p of peers.values())shoot(p,commands.get(p.id));
   const boxes=[...peers.values()].map(p=>bodyHitbox(p.id,p.epoch,p.motor.state.p,p.motor.state.crouched));
@@ -115,7 +115,7 @@ function fixedTick():void {
       const currentRoom=room(mode,mapId),members=[...peers.values()].filter(p=>p.mode===mode&&p.mapId===mapId);
       if(currentRoom.end&&tick>=currentRoom.end){
         const winners=members.slice().sort((a,b)=>b.kills-a.kills);
-        event(mode,{type:'round',winner:mode==='ffa'?(winners[0]?.name??'Personne'):currentRoom.score1===currentRoom.score2?'Égalité':currentRoom.score1>currentRoom.score2?'Équipe Azure':'Équipe Ember'});
+        event(mode,{type:'round',winner:mode==='ffa'?(winners[0]?.name??'Personne'):currentRoom.score1===currentRoom.score2?'Égalité':currentRoom.score1>currentRoom.score2?'Équipe Azure':'Équipe Ember'},mapId);
         currentRoom.end=tick+600*TICK_HZ;currentRoom.score1=0;currentRoom.score2=0;currentRoom.objectives=newObjectives();
         for(const p of members){p.kills=0;p.assists=0;p.deaths=0;respawn(p);}
       }
@@ -178,7 +178,7 @@ wss.on('connection',ws=>{
           authTime:now,budget:16,budgetTime:now,lastPacket:now};
         subjects.add(sub);peers.set(id,peer);clearTimeout(timeout);return;
       }
-      if(!binary){const message=JSON.parse(raw.toString());if(message.type!=='ping'||peer.team===0||tick-peer.lastPing<2*TICK_HZ)throw new Error('Invalid team command');const target=validatePing(message.p,peer.motor.state.p);peer.lastPing=tick;const frame=JSON.stringify({type:'ping',p:target,expires:tick*DT+6});for(const ally of peers.values())if(ally.mapId===peer.mapId&&ally.mode===peer.mode&&ally.team===peer.team&&ally.ws.bufferedAmount<65536)ally.ws.send(frame);return;}
+      if(!binary){const message=JSON.parse(raw.toString());if(message.type!=='ping'||peer.team===0||tick-peer.lastPing<2*TICK_HZ)throw new Error('Invalid team command');const target=validatePing(message.p,peer.motor.state.p);peer.lastPing=tick;const frame=JSON.stringify({type:'ping',time:tick*DT,p:target,expires:tick*DT+6});for(const ally of peers.values())if(ally.mapId===peer.mapId&&ally.mode===peer.mode&&ally.team===peer.team&&ally.ws.bufferedAmount<65536)ally.ws.send(frame);return;}
       const bytes=Buffer.isBuffer(raw)?raw:Buffer.concat(raw as Buffer[]),batch=decodeBatch(bytes),now=performance.now();
       peer.budget=Math.min(16,peer.budget+(now-peer.budgetTime)*TICK_HZ/1000);peer.budgetTime=now;
       if(batch.length>peer.budget || peer.queue.length-peer.head+batch.length>16)throw new Error('Input flood');

@@ -67,6 +67,7 @@ export class RapierMotor {
     }
     s.grounded=this.controller.computedGrounded();
     if(s.grounded && s.v.y<0)s.v.y=0;
+    applyTraversal(s,this.mapId);
     this.collider.setTranslation(s.p);
     if(!Object.values(s.p).every(Number.isFinite)||!Object.values(s.v).every(Number.isFinite)) throw new Error('Invalid physics state');
   }

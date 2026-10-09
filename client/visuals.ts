@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-export {buildArena,animateArena} from './arena.ts';
+export {buildArena,animateArena,clearArena} from './arena.ts';
 import {CHARACTERS} from '../shared/characters.ts';
 import {toonMaterial} from './materials.ts';
 

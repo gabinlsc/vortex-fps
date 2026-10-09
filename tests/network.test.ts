@@ -15,15 +15,15 @@ test('real server isolates modes, balances teams, transmits names and replenishe
   const port=(probe.address() as {port:number}).port;await new Promise<void>(resolve=>probe.close(()=>resolve()));
   const server=spawn(process.execPath,['node_modules/tsx/dist/cli.mjs','server/main.ts','--local-dev'],{env:{...process.env,PORT:String(port)},stdio:['ignore','pipe','pipe']});
   let output='';server.stdout.on('data',data=>{output+=String(data);});server.stderr.on('data',data=>{output+=String(data);});
-  const clients:{ws:WebSocket;latest:Snapshot|undefined;seq:number}[]=[];
+  const clients:{ws:WebSocket;latest:Snapshot|undefined;seq:number;events:any[]}[]=[];
   try{
     await waitFor(()=>output.includes('LOCAL DEVELOPMENT'));
-    async function connect(name:string,mode:string){
-      const client={ws:new WebSocket('ws://127.0.0.1:'+port+'/play',{origin:'http://localhost:5173'}),latest:undefined as Snapshot|undefined,seq:0};
+    async function connect(name:string,mode:string,mapId='canyon'){
+      const client={ws:new WebSocket('ws://127.0.0.1:'+port+'/play',{origin:'http://localhost:5173'}),latest:undefined as Snapshot|undefined,seq:0,events:[] as any[]};
       clients.push(client);client.ws.on('error',()=>{});
-      client.ws.on('message',(data,binary)=>{if(binary)client.latest=decodeSnapshot(new Uint8Array(data as Buffer));});
+      client.ws.on('message',(data,binary)=>{if(binary)client.latest=decodeSnapshot(new Uint8Array(data as Buffer));else client.events.push(JSON.parse(data.toString()));});
       await new Promise<void>((resolve,reject)=>{client.ws.once('open',()=>resolve());client.ws.once('error',reject);});
-      client.ws.send(JSON.stringify({version:2,map:MAP_VERSION,name,mode,character:0,ticket:''}));
+      client.ws.send(JSON.stringify({version:2,map:MAP_VERSION,name,mode,mapId,character:0,ticket:''}));
       await waitFor(()=>Boolean(client.latest));return client;
     }
     const alpha=await connect('Alpha','ffa'),bravo=await connect('Bravo','ffa');
@@ -41,7 +41,11 @@ test('real server isolates modes, balances teams, transmits names and replenishe
     await waitFor(()=>local().magazines?.[0]===6&&local().reloadLeft===0);
     assert.ok(local().state.p.y>0.85);
     assert.equal(alpha.ws.readyState,WebSocket.OPEN);
-    void bravo;void blue;
+    const harbor=await connect('Harbor','ffa','harbor'),dom=await connect('Dominant','domination'),ctf=await connect('Flag','ctf');
+    assert.equal(harbor.latest!.players.length,1);assert.equal(dom.latest!.mode,2);assert.equal(ctf.latest!.mode,3);assert.equal(dom.latest!.players[0].team,1);
+    const p=red.latest!.players.find(p=>p.id===red.latest!.self)!.state.p;red.ws.send(JSON.stringify({type:'ping',p}));await waitFor(()=>red.events.some(e=>e.type==='ping'));assert.ok(!blue.events.some(e=>e.type==='ping'));assert.ok(!harbor.events.some(e=>e.type==='ping'));
+    alpha.ws.send(encodeBatch([{seq:++alpha.seq,yaw:0,pitch:0,buttons:Button.Fire,weapon:1,phase:0}]));await waitFor(()=>alpha.events.some(e=>e.type==='projectiles'&&e.rows.length));const frame=alpha.events.find(e=>e.type==='projectiles'&&e.rows.length);assert.ok(frame.rows.every((q:any)=>Number.isInteger(q.id)&&Number.isFinite(q.p.x)));assert.ok(alpha.events.some(e=>e.type==='shot'));assert.ok(!harbor.events.some(e=>e.type==='shot'));
+    void bravo;
   }catch(err){throw new Error(String(err)+'\nServer output:\n'+output);}
   finally{
     for(const client of clients)client.ws.terminate();server.kill('SIGTERM');

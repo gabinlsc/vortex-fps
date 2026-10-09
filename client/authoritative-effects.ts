@@ -10,7 +10,7 @@ export class AuthoritativeEffects {
   }
   projectiles(rows:{id:number;p:{x:number;y:number;z:number}}[]):void {
     const ids=new Set(rows.map(r=>r.id));for(const [id,m]of this.bolts)if(!ids.has(id)||!this.enabled){this.remove(m);this.bolts.delete(id);}
-    if(!this.enabled)return;for(const row of rows){let m=this.bolts.get(row.id);if(!m){m=new THREE.Mesh(new THREE.OctahedronGeometry(0.12),new THREE.MeshBasicMaterial({color:0xffd68d}));this.scene.add(m);this.bolts.set(row.id,m);}m.position.set(row.p.x,row.p.y,row.p.z);}
+    if(!this.enabled)return;for(const row of rows){let m=this.bolts.get(row.id);if(!m){m=new THREE.Mesh(new THREE.OctahedronGeometry(0.12),new THREE.MeshBasicMaterial({color:0xffd68d}));const tail=new THREE.Mesh(new THREE.CylinderGeometry(0.024,0.024,1,5),new THREE.MeshBasicMaterial({color:0xffc578,transparent:true,opacity:0.65,depthWrite:false}));tail.name='tail';tail.visible=false;m.add(tail);this.scene.add(m);this.bolts.set(row.id,m);}const next=new THREE.Vector3(row.p.x,row.p.y,row.p.z),delta=m.position.clone().sub(next),length=delta.length(),tail=m.getObjectByName('tail') as THREE.Mesh;tail.visible=length>0.001&&length<4;if(tail.visible){tail.position.copy(delta).multiplyScalar(0.5);tail.scale.y=length;tail.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),delta.normalize());}m.position.copy(next);}
   }
   impact(p:{x:number;y:number;z:number},surface:string,time:number):void {
     if(!this.enabled)return;const color=surface==='metal'?0xffd58d:surface==='flesh'?0xff96ac:0xceae85;
@@ -22,5 +22,5 @@ export class AuthoritativeEffects {
     for(let i=this.particles.length-1;i>=0;i--){const s=this.particles[i];if(!this.enabled||time>s.until){this.remove(s.m);this.particles.splice(i,1);}else{s.v.y-=dt*8;s.m.position.addScaledVector(s.v,dt);(s.m.material as THREE.MeshBasicMaterial).opacity=Math.max(0,(s.until-time)*1.6);}}
   }
   clear():void {for(const b of this.beams)this.remove(b.mesh);for(const b of this.particles)this.remove(b.m);for(const b of this.bolts.values())this.remove(b);this.beams=[];this.particles=[];this.bolts.clear();}
-  private remove(m:THREE.Mesh):void{this.scene.remove(m);m.geometry.dispose();(m.material as THREE.Material).dispose();}
+  private remove(m:THREE.Mesh):void{this.scene.remove(m);m.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});}
 }
