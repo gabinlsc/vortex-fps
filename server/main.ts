@@ -1,3 +1,4 @@
+import {newObjectives,updateObjectives,validatePing,type Objectives} from '../shared/objectives.ts';
 import {applyHit} from './combat.ts';
 import {createServer} from 'node:http';
 import {randomBytes} from 'node:crypto';
@@ -27,15 +28,15 @@ const world=worlds.get('canyon')!,handles=new Set<number>(),history=new History(
 let tick=0,nextId=1,running=true;
 interface Queued {input:Input;receiptTick:number}
 interface Peer {
-  id:number;mapId:MapId;character:number;name:string;mode:GameMode;team:Team;kills:number;assists:number;deaths:number;respawnAt:number;protectedUntil:number;contributors:Map<number,{damage:number;time:number}>;inventory:Inventory;sub:string;ws:WebSocket;motor:RapierMotor;queue:Queued[];head:number;
+  id:number;mapId:MapId;lastPing:number;character:number;name:string;mode:GameMode;team:Team;kills:number;assists:number;deaths:number;respawnAt:number;protectedUntil:number;contributors:Map<number,{damage:number;time:number}>;inventory:Inventory;sub:string;ws:WebSocket;motor:RapierMotor;queue:Queued[];head:number;
   received:number;ack:number;last:Input;epoch:number;health:number;hits:number;nextShot:number;shotIndex:number;
   rtt:number;rttSamples:number[];nonce:Buffer|null;pingTime:number;authTime:number;
   budget:number;budgetTime:number;lastPacket:number;
 }
 const peers=new Map<number,Peer>(),subjects=new Set<string>(),redeemed=new Map<string,number>();
 const projectiles:Projectile[]=[];
-const rooms=new Map<string,{end:number;score1:number;score2:number}>();
-function room(mode:GameMode,mapId:MapId){const key=mapId+':'+mode;let value=rooms.get(key);if(!value){value={end:tick+600*TICK_HZ,score1:0,score2:0};rooms.set(key,value);}return value;}
+const rooms=new Map<string,{end:number;score1:number;score2:number;objectives:Objectives}>();
+function room(mode:GameMode,mapId:MapId){const key=mapId+':'+mode;let value=rooms.get(key);if(!value){value={end:tick+600*TICK_HZ,score1:0,score2:0,objectives:newObjectives()};rooms.set(key,value);}return value;}
 function targets(owner:Peer){
   return [...peers.values()].filter(p=>p.mapId===owner.mapId&&p.id!==owner.id&&p.health>0&&canDamage(owner,p));
 }
@@ -103,14 +104,18 @@ function fixedTick():void {
     if(hit||wall<segment.distance||projectile.life<=0)projectiles.splice(i,1);
   }
   if(tick%4===0){ // 32 snapshots/s independent from 128 physics ticks/s
-    for(const mapId of MAP_IDS)for(const mode of ['ffa','tdm'] as const){
+    for(const mapId of MAP_IDS)for(const mode of ['ffa','tdm','domination','ctf'] as const){
       const currentRoom=room(mode,mapId),members=[...peers.values()].filter(p=>p.mode===mode&&p.mapId===mapId);
       if(currentRoom.end&&tick>=currentRoom.end){
         const winners=members.slice().sort((a,b)=>b.kills-a.kills);
         event(mode,{type:'round',winner:mode==='ffa'?(winners[0]?.name??'Personne'):currentRoom.score1===currentRoom.score2?'Égalité':currentRoom.score1>currentRoom.score2?'Équipe Azure':'Équipe Ember'});
-        currentRoom.end=tick+600*TICK_HZ;currentRoom.score1=0;currentRoom.score2=0;
+        currentRoom.end=tick+600*TICK_HZ;currentRoom.score1=0;currentRoom.score2=0;currentRoom.objectives=newObjectives();
         for(const p of members){p.kills=0;p.assists=0;p.deaths=0;respawn(p);}
       }
+      const objectivePlayers=members.map(p=>({id:p.id,team:p.team,health:p.health,p:p.motor.state.p,magazines:p.inventory.magazines}));
+      updateObjectives(currentRoom.objectives,objectivePlayers,mode,tick/4,32);for(const p of members)p.health=objectivePlayers.find(o=>o.id===p.id)!.health;
+      if(mode==='domination'||mode==='ctf'){currentRoom.score1=currentRoom.objectives.score1;currentRoom.score2=currentRoom.objectives.score2;}
+      if(tick%16===0)event(mode,{type:'objectives',state:currentRoom.objectives,tick:tick/4,mode},mapId);
       const players:PlayerSnapshot[]=members.map(p=>({id:p.id,ack:p.ack,state:copyState(p.motor.state),
         yaw:p.last.yaw,pitch:p.last.pitch,health:p.health,epoch:p.epoch,hits:p.hits,character:p.character,
         name:p.name,team:p.team,kills:p.kills,assists:p.assists,deaths:p.deaths,weapon:p.last.weapon,
@@ -118,7 +123,7 @@ function fixedTick():void {
         respawnLeft:p.health<=0?Math.max(0,p.respawnAt-tick):0,protectedLeft:Math.max(0,p.protectedUntil-tick),shotIndex:p.shotIndex}));
       for(const p of members){
         if(p.ws.bufferedAmount>64*1024){p.ws.close(1013,'Slow consumer');continue;}
-        p.ws.send(encodeSnapshot({tick,time:tick*DT,self:p.id,players,rttMs:p.rtt,mode:mode==='tdm'?1:0,score1:currentRoom.score1,score2:currentRoom.score2,remaining:Math.ceil(Math.max(0,currentRoom.end-tick)/TICK_HZ)}),{binary:true});
+        p.ws.send(encodeSnapshot({tick,time:tick*DT,self:p.id,players,rttMs:p.rtt,mode:['ffa','tdm','domination','ctf'].indexOf(mode),score1:currentRoom.score1,score2:currentRoom.score2,remaining:Math.ceil(Math.max(0,currentRoom.end-tick)/TICK_HZ)}),{binary:true});
       }
     }
   }
@@ -160,13 +165,13 @@ wss.on('connection',ws=>{
         const id=nextId++,now=performance.now(),team=assignTeam(mode,[...peers.values()].filter(p=>p.mode===mode&&p.mapId===mapId).map(p=>p.team));
         const spawn=chooseSpawn(team,[...peers.values()].filter(p=>p.mode===mode&&p.mapId===mapId&&(mode==='ffa'||p.team!==team)&&p.health>0).map(p=>p.motor.state.p),id,getMap(mapId).spawns);
         room(mode,mapId);
-        peer={id,mapId,character,name,mode,team,kills:0,assists:0,deaths:0,respawnAt:0,protectedUntil:tick+TICK_HZ,contributors:new Map(),inventory:newInventory(),sub,ws,motor:new RapierMotor(worlds.get(mapId)!,initialState(spawn[0],spawn[1],spawn[2]),handles),queue:[],head:0,
+        peer={id,mapId,lastPing:-512,character,name,mode,team,kills:0,assists:0,deaths:0,respawnAt:0,protectedUntil:tick+TICK_HZ,contributors:new Map(),inventory:newInventory(),sub,ws,motor:new RapierMotor(worlds.get(mapId)!,initialState(spawn[0],spawn[1],spawn[2]),handles,mapId),queue:[],head:0,
           received:0,ack:0,last:{seq:0,yaw:0,pitch:0,buttons:0,weapon:0,phase:0},epoch:0,health:100,hits:0,
           nextShot:tick,shotIndex:0,rtt:0,rttSamples:[],nonce:null,pingTime:0,
           authTime:now,budget:16,budgetTime:now,lastPacket:now};
         subjects.add(sub);peers.set(id,peer);clearTimeout(timeout);return;
       }
-      if(!binary)throw new Error('Binary input required');
+      if(!binary){const message=JSON.parse(raw.toString());if(message.type!=='ping'||peer.team===0||tick-peer.lastPing<2*TICK_HZ)throw new Error('Invalid team command');const target=validatePing(message.p,peer.motor.state.p);peer.lastPing=tick;const frame=JSON.stringify({type:'ping',p:target,expires:tick*DT+6});for(const ally of peers.values())if(ally.mapId===peer.mapId&&ally.mode===peer.mode&&ally.team===peer.team&&ally.ws.bufferedAmount<65536)ally.ws.send(frame);return;}
       const bytes=Buffer.isBuffer(raw)?raw:Buffer.concat(raw as Buffer[]),batch=decodeBatch(bytes),now=performance.now();
       peer.budget=Math.min(16,peer.budget+(now-peer.budgetTime)*TICK_HZ/1000);peer.budgetTime=now;
       if(batch.length>peer.budget || peer.queue.length-peer.head+batch.length>16)throw new Error('Input flood');

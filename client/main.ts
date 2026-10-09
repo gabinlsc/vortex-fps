@@ -1,3 +1,5 @@
+import {ObjectiveView} from './objectives.ts';
+import {solidQuery,traceSolids} from '../shared/arena-geometry.ts';
 import {themeArena,animateBiomes} from './biomes.ts';
 import * as THREE from 'three';
 import './style.css';
@@ -21,6 +23,7 @@ let effects:CombatEffects,hitUntil=0,hurtUntil=0;
 const element=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id)! as T;
 const canvas=element<HTMLCanvasElement>('scene'),menu=element('menu'),status=element('status');
 let ws:WebSocket|undefined,self=0,seq=0,yaw=0,pitch=0,weapon=0,character=0,mode:GameMode='ffa',buttons=0,latest:Snapshot|undefined;
+let objectiveView:ObjectiveView;
 let selectedMap:MapId='canyon',mapBusy=false;
 let ignoreLook=true;
 let edgeButtons=0,authority:PlayerSnapshot|undefined,hudTime=0;
@@ -82,6 +85,7 @@ function refreshLoadout():void{
 weaponOptions.addEventListener('click',e=>{const b=(e.target as Element).closest<HTMLButtonElement>('[data-weapon]');if(b){weapon=Number(b.dataset.weapon);refreshLoadout();}});
 characterOptions.addEventListener('click',e=>{const b=(e.target as Element).closest<HTMLButtonElement>('[data-character]');if(b&&!ws){character=Number(b.dataset.character);refreshLoadout();}});
 modeOptions.addEventListener('click',e=>{const b=(e.target as Element).closest<HTMLButtonElement>('[data-mode]');if(b&&!ws){mode=b.dataset.mode as GameMode;refreshLoadout();}});
+for(const [id,label]of [['domination','DOMINATION'],['ctf','DRAPEAU']]){const b=document.createElement('button');b.type='button';b.className='option';b.dataset.mode=id;b.textContent=label;modeOptions.append(b);}
 refreshLoadout();join.disabled=true;
 function requestControl():void {
   if(document.activeElement instanceof HTMLElement)document.activeElement.blur();canvas.focus({preventScroll:true});
@@ -107,6 +111,7 @@ addEventListener('keydown',e=>{
   if(e.code==='Tab'&&self&&(document.pointerLockElement===canvas||!(document.activeElement instanceof HTMLInputElement))){e.preventDefault();element('scoreboard').hidden=false;return;}
   if(document.pointerLockElement!==canvas||!self)return;e.preventDefault();keys.add(e.code);
   if(!e.repeat&&e.code==='KeyR')edgeButtons|=Button.Reload;if(!e.repeat&&e.code==='Space')edgeButtons|=Button.Jump;
+  if(e.code==='KeyG'&&!e.repeat&&(latest?.players.find(p=>p.id===self)?.team??0)>0&&ws?.readyState===WebSocket.OPEN){const d=new THREE.Vector3();camera.getWorldDirection(d);const range=traceSolids(camera.position,d,getMap(selectedMap).boxes.map(solidQuery),60),p=camera.position.clone().addScaledVector(d,range);p.y=Math.max(0,Math.min(30,p.y));if(Math.abs(p.x)<=63&&Math.abs(p.z)<=63)ws.send(JSON.stringify({type:'ping',p:{x:p.x,y:p.y,z:p.z}}));}
   if(e.code==='Digit1')weapon=0;if(e.code==='Digit2')weapon=1;
   if(e.code==='Digit1'||e.code==='Digit2')refreshLoadout();updateButtons();
 });
@@ -140,7 +145,7 @@ function hud(s:Snapshot,me:PlayerSnapshot):void{
   const loading=(me.reloadLeft??0)>0,slot=me.reloadWeapon??weapon;
   element('reload-status').textContent=loading?'RECHARGEMENT · '+((me.reloadLeft??0)*DT).toFixed(1)+' s':'R POUR RECHARGER';
   element<HTMLProgressElement>('reload-progress').value=loading?1-(me.reloadLeft??0)/WEAPONS[Math.max(0,slot)].reloadTicks:0;
-  element('mode-label').textContent=s.mode?'TEAM DEATHMATCH':'FREE FOR ALL';
+  element('mode-label').textContent=['FREE FOR ALL','TEAM DEATHMATCH','DOMINATION','CAPTURE DU DRAPEAU'][s.mode??0];
   element('players-count').textContent=s.players.length+' JOUEUR'+(s.players.length>1?'S':'');
   const remaining=s.remaining??600;element('match-clock').textContent=Math.floor(remaining/60).toString().padStart(2,'0')+':'+(remaining%60).toString().padStart(2,'0');
   element('team-score').textContent=s.mode?(s.score1??0)+' / '+(s.score2??0):'';
@@ -176,6 +181,8 @@ element<HTMLFormElement>('lobby').onsubmit=e=>{
     try{
       if(typeof e.data==='string'){
         const message=JSON.parse(e.data);if(message.type==='kill')feed(String(message.killer)+' → '+String(message.victim));
+        if(message.type==='objectives')objectiveView.update(message.state,message.mode,message.tick);
+        if(message.type==='ping')objectiveView.ping(message.p,performance.now()/1000+6);
         if(message.type==='round')feed('FIN DE MANCHE · '+String(message.winner));return;
       }
       if(!(e.data instanceof ArrayBuffer))throw new Error('Invalid server frame');
@@ -236,7 +243,7 @@ function frame(now:number):void{
   const targetFov=settings.fov+(active&&!settings.reducedMotion?Math.min(8,Math.max(0,speed-8)*0.6):0);
   if(Math.abs(camera.fov-targetFov)>0.01){camera.fov+=(targetFov-camera.fov)*(1-Math.exp(-elapsed*8));camera.updateProjectionMatrix();}
   viewWeapon.update(elapsed,time,speed,weapon,active,Boolean(me?.reloadLeft),settings.reducedMotion);
-  effects.update(elapsed);if(!settings.reducedMotion){animateArena(scene,time);animateBiomes(scene,time,(document.getElementById('fauna-toggle') as HTMLInputElement)?.checked!==false);}
+  effects.update(elapsed);objectiveView?.animate(time);if(!settings.reducedMotion){animateArena(scene,time);animateBiomes(scene,time,(document.getElementById('fauna-toggle') as HTMLInputElement)?.checked!==false);}
   if(document.hidden)return;
   renderer.render(scene,camera);if(active&&me&&me.health>0)viewWeapon.render(renderer);else if(!self)showroom.render(renderer,now/1000,character,weapon);
   if(performance.now()-started>1000)console.warn('Vortex slow frame',Math.round(performance.now()-started),predictor.pending.length);
@@ -251,12 +258,12 @@ async function boot():Promise<void>{
   const intro=menu.querySelector('.intro');if(intro)intro.textContent='Sous les falaises, à travers les jardins. Prends les rampes, domine les toits.';
   const brand=document.querySelector('#brand span');if(brand)brand.textContent=' / 05';
   scene=new THREE.Scene();buildArena(scene,selectedMap);camera=new THREE.PerspectiveCamera(settings.fov,innerWidth/innerHeight,0.05,260);camera.rotation.order='YXZ';
-  effects=new CombatEffects(scene,getMap(selectedMap).boxes);showroom=new Showroom();viewWeapon=new ViewWeapon();viewWeapon.resize(camera.aspect);applySettings();
-  world=await createArena(selectedMap);const start=getMap(selectedMap).spawns[0];motor=new RapierMotor(world,initialState(start[0],start[1],start[2]),new Set());world.step();
+  effects=new CombatEffects(scene,getMap(selectedMap).boxes);objectiveView=new ObjectiveView(scene,selectedMap);showroom=new Showroom();viewWeapon=new ViewWeapon();viewWeapon.resize(camera.aspect);applySettings();
+  world=await createArena(selectedMap);const start=getMap(selectedMap).spawns[0];motor=new RapierMotor(world,initialState(start[0],start[1],start[2]),new Set(),selectedMap);world.step();
   predictor=new Predictor(motor,()=>world.step());join.disabled=false;status.textContent='Prêt. Choisis ton pseudo, ton mode et ton équipement.';lastFrame=performance.now();requestAnimationFrame(frame);
 }
 const mapSelect=document.createElement('select');mapSelect.id='map-select';mapSelect.setAttribute('aria-label','Carte');for(const id of ['canyon','harbor'] as const){const option=document.createElement('option');option.value=id;option.textContent=getMap(id).name;mapSelect.append(option);}modeOptions.before(mapSelect);
-mapSelect.onchange=async()=>{if(ws||mapBusy)return;mapBusy=true;join.disabled=true;try{selectedMap=mapSelect.value as MapId;motor.dispose();world.free();for(const object of [...scene.children])scene.remove(object);scene.userData.quality=undefined;buildArena(scene,selectedMap);effects=new CombatEffects(scene,getMap(selectedMap).boxes);world=await createArena(selectedMap);const p=getMap(selectedMap).spawns[0];motor=new RapierMotor(world,initialState(...p),new Set());world.step();predictor=new Predictor(motor,()=>world.step());applySettings();status.textContent=getMap(selectedMap).name+' pr?te.';}finally{mapBusy=false;join.disabled=false;}};
+mapSelect.onchange=async()=>{if(ws||mapBusy)return;mapBusy=true;join.disabled=true;try{selectedMap=mapSelect.value as MapId;motor.dispose();world.free();for(const object of [...scene.children])scene.remove(object);scene.userData.quality=undefined;buildArena(scene,selectedMap);effects=new CombatEffects(scene,getMap(selectedMap).boxes);world=await createArena(selectedMap);const p=getMap(selectedMap).spawns[0];motor=new RapierMotor(world,initialState(...p),new Set(),selectedMap);world.step();predictor=new Predictor(motor,()=>world.step());applySettings();status.textContent=getMap(selectedMap).name+' pr?te.';}finally{mapBusy=false;join.disabled=false;}};
 const theme=document.createElement('select');theme.id='theme-select';theme.setAttribute('aria-label','Ambiance');theme.innerHTML='<option value="day">Jour</option><option value="night">Nuit</option>';theme.value=localStorage.getItem('vortex-theme')==='night'?'night':'day';theme.setAttribute('data-night',String(theme.value==='night'));theme.onchange=()=>{localStorage.setItem('vortex-theme',theme.value);theme.setAttribute('data-night',String(theme.value==='night'));themeArena(scene,theme.value==='night');};document.getElementById('settings')!.append(theme);
 const fauna=document.createElement('label');fauna.className='setting-choice';fauna.textContent='Faune d?ambiance';const toggle=document.createElement('input');toggle.type='checkbox';toggle.id='fauna-toggle';toggle.checked=localStorage.getItem('vortex-fauna')!=='off';toggle.onchange=()=>{localStorage.setItem('vortex-fauna',toggle.checked?'on':'off');const group=scene.getObjectByName('ambient-fauna');if(group)group.visible=toggle.checked;};fauna.append(toggle);document.getElementById('settings')!.append(fauna);
 void boot().catch(err=>{status.textContent='Le moteur ne peut pas démarrer : '+String(err);join.disabled=true;});

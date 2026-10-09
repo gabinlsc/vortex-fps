@@ -1,3 +1,4 @@
+import {applyTraversal} from './traversal.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Button, DT, type Input } from './input.ts';
 import { MOVE, copyState, integrateVelocity, clipVelocity, type MotionState } from './movement.ts';
@@ -22,7 +23,7 @@ export class RapierMotor {
   readonly controller:RAPIER.KinematicCharacterController;
   state:MotionState;
   private readonly solids = (c:RAPIER.Collider)=>c.handle!==this.collider.handle && !this.players.has(c.handle);
-  constructor(readonly world:RAPIER.World, state:MotionState, private readonly players:Set<number>) {
+  constructor(readonly world:RAPIER.World, state:MotionState, private readonly players:Set<number>,private readonly mapId:MapId='canyon') {
     this.state=copyState(state);
     this.collider=world.createCollider(RAPIER.ColliderDesc.capsule(MOVE.standHalf,MOVE.radius)
       .setTranslation(state.p.x,state.p.y,state.p.z));

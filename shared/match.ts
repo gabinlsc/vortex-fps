@@ -1,8 +1,8 @@
 import {SPAWNS,type VecTuple} from './map.ts';
-export type GameMode='ffa'|'tdm';
+export type GameMode='ffa'|'tdm'|'domination'|'ctf';
 export type Team=0|1|2;
 export function validateMode(value:unknown):GameMode {
-  if(value!=='ffa'&&value!=='tdm')throw new Error('Invalid game mode');
+  if(value!=='ffa'&&value!=='tdm'&&value!=='domination'&&value!=='ctf')throw new Error('Invalid game mode');
   return value;
 }
 export function nickname(value:unknown):string {
