@@ -18,6 +18,14 @@ Le script lance un Vite local temporaire et Chromium avec WebGL logiciel, enregi
 
 ## Matériaux peints
 
-Les huit surfaces de `client/materials.ts` sont générées sur canvas : sable, trois teintes de grès, métal peint, caisses de ravitaillement, céramique et caillebotis. Les aplats, coups de pinceau et strates donnent un style cartoon sans bruit photographique.
+Les neuf surfaces de `client/materials.ts` sont générées sur canvas : sable, trois teintes de grès, métal peint, caisses de ravitaillement, céramique, caillebotis et écorce. Les aplats, coups de pinceau et strates donnent un style cartoon sans bruit photographique.
 
 Les UV du terrain ont une échelle physique constante. Les falaises utilisent des strates plus larges ; les caisses portent une composition complète sur chaque face. Les textures et matériaux sont mis en cache et les solides sont regroupés par surface. Les avatars et armes partagent le dégradé d'ombrage à quatre tons.
+
+## Ambiance et qualité
+
+Les jardins ont des jardinières et des troncs solides ; les feuilles sont du feuillage pénétrable. Les petites plantes restent dans les marges des routes et de la place centrale. Les bassins des grottes sont des surfaces peu profondes au niveau du sol, sans danger ni trou de collision.
+
+Le ciel dégradé, les nuages lents et les ondulations se figent avec la réduction des animations. Les ombres directionnelles utilisent 1024 px en qualité équilibrée et 2048 px en haute qualité. La qualité légère conserve les ombres de contact et réduit le nombre de plantes, sans shadow map. Les faces avant des solides produisent les ombres afin de conserver des plafonds propres dans les grottes.
+
+`npm run review:map -- low` contrôle le rendu léger ; la commande sans argument contrôle le rendu haut. Les captures sont également disponibles via les scénarios navigateur. Les nombres de draw calls et de triangles sont des mesures de scène, pas une garantie de FPS matériel.

@@ -13,6 +13,7 @@ import {buildArena,animateArena,createAvatar,animateAvatar,attachName,disposeNam
 import {CombatEffects,GameAudio} from './effects.ts';
 import {ShotTracker} from './shot-tracker.ts';
 import {loadSettings,saveSettings} from './settings.ts';
+import {configureArenaQuality} from './landscape.ts';
 const settings=loadSettings(),shotTracker=new ShotTracker(),audio=new GameAudio();
 let effects:CombatEffects,hitUntil=0,hurtUntil=0;
 const element=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id)! as T;
@@ -33,6 +34,7 @@ function applySettings():void {
   if(effects){effects.enabled=settings.effects;if(!settings.effects)effects.clear();}
   if(renderer){
     const quality=new URLSearchParams(location.search).get('quality')==='low'?'low':settings.quality;
+    if(scene)configureArenaQuality(renderer,scene,quality);
     renderer.setPixelRatio(quality==='low'?0.6:Math.min(devicePixelRatio,quality==='high'?1.75:1.25));renderer.setSize(innerWidth,innerHeight);
   }
   for(const key of ['fov','sensitivity','volume'] as const){
@@ -150,7 +152,7 @@ function minimap(s:Snapshot,me:PlayerSnapshot):void{
   ctx.strokeStyle='#e6d8ad';ctx.lineWidth=4;
   for(const route of ROUTES){ctx.beginPath();route.forEach(([x,z],i)=>{if(i===0)ctx.moveTo((x+64)*scale,(z+64)*scale);else ctx.lineTo((x+64)*scale,(z+64)*scale);});ctx.stroke();}
   // Draw solid cover over the navigation paths.
-  for(const b of BOXES){if(b.kind==='ground')continue;ctx.fillStyle=b.kind==='stone'?'#8892ad':b.kind==='crate'?'#e6b370':'#558da4';ctx.fillRect((b.p[0]-b.h[0]+64)*scale,(b.p[2]-b.h[2]+64)*scale,b.h[0]*2*scale,b.h[2]*2*scale);}
+  for(const b of BOXES){if(b.kind==='ground')continue;ctx.fillStyle=b.zone==='tree'?'#78b496':b.kind==='stone'?'#b28c76':b.kind==='crate'?'#e6b370':'#558da4';ctx.fillRect((b.p[0]-b.h[0]+64)*scale,(b.p[2]-b.h[2]+64)*scale,b.h[0]*2*scale,b.h[2]*2*scale);}
   ctx.fillStyle='#d9eef0';ctx.font='bold 9px sans-serif';ctx.fillText('N',82,12);
   const px=(me.state.p.x+64)*scale,pz=(me.state.p.z+64)*scale;
   ctx.save();ctx.translate(px,pz);ctx.rotate(-yaw);ctx.fillStyle='#c4ff9d';ctx.beginPath();ctx.moveTo(0,-9);ctx.lineTo(-4,-3);ctx.lineTo(4,-3);ctx.closePath();ctx.fill();ctx.restore();
@@ -217,7 +219,7 @@ function frame(now:number):void{
     const time=clock.serverNow(now/1000)-INTERPOLATION_MS/1000;
     for(const [id,mesh]of enemies){const p=interpolator.sample(id,time);if(p){mesh.position.set(p.state.p.x,p.state.p.y,p.state.p.z);mesh.scale.y=p.state.crouched?0.61:1;mesh.rotation.y=p.yaw;mesh.visible=p.health>0;animateAvatar(mesh,now/1000,Math.hypot(p.state.v.x,p.state.v.z));}}
   }else{
-    accumulator=0;send=[];const angle=now*0.000022;camera.position.set(Math.sin(angle)*48,25,Math.cos(angle)*48);camera.lookAt(0,2,0);
+    accumulator=0;send=[];const angle=now*0.000022;camera.position.set(Math.sin(angle)*52,32,Math.cos(angle)*52);camera.lookAt(0,3,0);
   }
   const active=Boolean(self)&&document.pointerLockElement===canvas,me=latest?.players.find(p=>p.id===self);
   document.body.classList.toggle('playing',active);
@@ -239,9 +241,12 @@ function frame(now:number):void{
 }
 let send:Input[]=[];
 async function boot():Promise<void>{
-  renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
+  renderer=new THREE.WebGLRenderer({canvas,antialias:settings.quality!=='low'&&new URLSearchParams(location.search).get('quality')!=='low',powerPreference:'high-performance'});
   renderer.setPixelRatio(new URLSearchParams(location.search).get('quality')==='low'?0.6:Math.min(devicePixelRatio,1.25));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;
   renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.0;
+  const subtitle=menu.querySelector('.map-card small');if(subtitle)subtitle.textContent='128 × 128 m · canyon · jardins · galeries · grottes';
+  const intro=menu.querySelector('.intro');if(intro)intro.textContent='Sous les falaises, à travers les jardins. Prends les rampes, domine les toits.';
+  const brand=document.querySelector('#brand span');if(brand)brand.textContent=' / 05';
   scene=new THREE.Scene();buildArena(scene);camera=new THREE.PerspectiveCamera(settings.fov,innerWidth/innerHeight,0.05,260);camera.rotation.order='YXZ';
   effects=new CombatEffects(scene);showroom=new Showroom();viewWeapon=new ViewWeapon();viewWeapon.resize(camera.aspect);applySettings();
   world=await createArena();const start=SPAWNS[0];motor=new RapierMotor(world,initialState(start[0],start[1],start[2]),new Set());world.step();

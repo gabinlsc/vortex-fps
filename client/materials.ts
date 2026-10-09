@@ -1,10 +1,10 @@
 ﻿import * as THREE from 'three';
-export type PaintedSurface='sand'|'sandstone'|'rose-stone'|'ochre-stone'|'metal'|'cargo'|'ceramic'|'deck';
+export type PaintedSurface='sand'|'sandstone'|'rose-stone'|'ochre-stone'|'metal'|'cargo'|'ceramic'|'deck'|'bark';
 const SIZE=512;
 export const CEL_GRADIENT=new THREE.DataTexture(new Uint8Array([102,168,220,255]),4,1,THREE.RedFormat);
 CEL_GRADIENT.minFilter=CEL_GRADIENT.magFilter=THREE.NearestFilter;CEL_GRADIENT.needsUpdate=true;
 const textures=new Map<PaintedSurface,THREE.CanvasTexture>(),materials=new Map<string,THREE.MeshToonMaterial>();
-const palettes={sand:['#d8bc90','#edd6aa','#bea27d'],sandstone:['#c28c6d','#e5b58a','#976953'],'rose-stone':['#aa8790','#d4a7a8','#816976'],'ochre-stone':['#c9a16a','#ead0a0','#9c794f'],metal:['#4b7c8a','#82aeb2','#294553'],cargo:['#d9a265','#f3c886','#825d42'],ceramic:['#eadfc7','#fff1d2','#bcb3a1'],deck:['#395362','#608491','#243947']} as const;
+const palettes={sand:['#d8bc90','#edd6aa','#bea27d'],sandstone:['#c28c6d','#e5b58a','#976953'],'rose-stone':['#aa8790','#d4a7a8','#816976'],'ochre-stone':['#c9a16a','#ead0a0','#9c794f'],metal:['#4b7c8a','#82aeb2','#294553'],cargo:['#d9a265','#f3c886','#825d42'],ceramic:['#eadfc7','#fff1d2','#bcb3a1'],deck:['#395362','#608491','#243947'],bark:['#97745c','#c49971','#725447']} as const;
 function seeded(seed:number):()=>number{return ()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};}
 function panel(ctx:CanvasRenderingContext2D,x:number,y:number,w:number,h:number,base:string,light:string,dark:string):void{
   ctx.fillStyle=dark;ctx.fillRect(x,y,w,h);ctx.fillStyle=base;ctx.fillRect(x+7,y+7,w-14,h-14);
@@ -30,6 +30,8 @@ export function paintedTexture(kind:PaintedSurface):THREE.CanvasTexture {
       ctx.strokeStyle=dark;ctx.globalAlpha=0.55;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,y+thickness);ctx.bezierCurveTo(125,y+thickness+8,360,y+thickness-8,SIZE,y+thickness);ctx.stroke();ctx.globalAlpha=1;
       for(let j=0;j<3;j++){const x=25+random()*450;ctx.strokeStyle=dark;ctx.globalAlpha=0.3;ctx.lineWidth=1.8;ctx.beginPath();ctx.moveTo(x,y+20);ctx.lineTo(x+18,y+35);ctx.lineTo(x+6,y+48);ctx.stroke();ctx.globalAlpha=1;}
     }
+  }else if(kind==='bark'){
+    ctx.lineWidth=3;ctx.strokeStyle=dark;for(let x=20;x<SIZE;x+=59){ctx.beginPath();ctx.moveTo(x,0);ctx.bezierCurveTo(x+12,180,x-10,350,x,SIZE);ctx.stroke();}
   }else if(kind==='sand'){
     for(let i=0;i<85;i++){
       const x=random()*SIZE,y=random()*SIZE;ctx.fillStyle=i%4?dark:light;ctx.globalAlpha=0.25;ctx.beginPath();ctx.ellipse(x,y,1+random()*3,0.7+random()*1.5,-0.25,0,Math.PI*2);ctx.fill();
