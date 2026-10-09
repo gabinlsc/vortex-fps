@@ -8,7 +8,7 @@ const PATTERN=Object.freeze([[0,0],[1,4],[-2,7],[3,8],[-3,9],[2,10],[0,11],[-1,1
 export function recoil(index:number):{yaw:number;pitch:number} {
   const p=PATTERN[index%PATTERN.length],unit=Math.PI/180*0.12;return {yaw:p[0]*unit,pitch:p[1]*unit};
 }
-export interface Projectile {owner:number;ownerEpoch:number;p:Vec3;v:Vec3;life:number;damage:number}
+export interface Projectile {id?:number;owner:number;ownerEpoch:number;p:Vec3;v:Vec3;life:number;damage:number}
 // The caller sweeps from p0 to p1 each tick against map and current hitboxes. Never use only end-point overlap.
 export function projectileStep(p:Projectile,dt:number,gravity=0):{from:Vec3;to:Vec3;distance:number;direction:Vec3} {
   const from={...p.p};p.v.y-=gravity*dt;

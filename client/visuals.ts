@@ -70,6 +70,9 @@ function createWeapon(weapon:number):THREE.Group {
     for(const x of [-0.14,0.14])box(model,dark,x,0,-0.18,0.065,0.26,0.4);
     box(model,metal,0,0,-0.46,0.18,0.16,0.13);
   }
+  for(let i=0;i<5;i++)box(model,dark,0,0.078,0.18-i*0.055,0.22,0.022,0.022);
+  const cell=box(model,weapon?amber:cyan,0,-0.17,0.02,0.11,0.16,0.12);cell.name='energy-cell';
+  for(const x of [-0.11,0.11])box(model,metal,x,-0.09,0.04,0.035,0.08,0.16);
   const flash=new THREE.Mesh(new THREE.OctahedronGeometry(0.09),weapon?amber:cyan);
   flash.name='flash';flash.position.z=weapon?-0.56:-0.65;flash.visible=false;model.add(flash);
   return model;
@@ -89,7 +92,7 @@ export class ViewWeapon {
       model.visible=i===weapon;model.getObjectByName('flash')!.visible=active&&time-this.lastShot<0.04;
       model.position.set(0.3+(reducedMotion?0:Math.sin(time*10)*Math.min(speed,12)*0.0008),-0.26+(reducedMotion?0:Math.cos(time*20)*Math.min(speed,12)*0.0006),-0.6+this.kick*0.06);
       model.rotation.x=(reducedMotion?0:this.kick*0.08)+(reloading?-0.5:0);
-      model.rotation.z=reloading?-0.25:0;
+      model.rotation.z=reloading?Math.sin(time*5)*0.12-0.25:0;const cell=model.getObjectByName('energy-cell');if(cell)cell.position.y=-0.17-(reloading?Math.abs(Math.sin(time*4))*0.22:0);
     });
   }
   render(renderer:THREE.WebGLRenderer):void {

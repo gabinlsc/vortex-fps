@@ -8,7 +8,7 @@ import {initialState,copyState} from '../shared/movement.ts';
 import {Button,DT,TICK_HZ,decodeBatch,type Input} from '../shared/input.ts';
 import {encodeSnapshot,type PlayerSnapshot} from '../shared/snapshot.ts';
 import {BOXES,MAP_VERSION,SPAWNS} from '../shared/map.ts';
-import {solidQuery,traceSolids} from '../shared/arena-geometry.ts';
+import {solidQuery,traceSolids,raySolid} from '../shared/arena-geometry.ts';
 import {getMap,validateMap,MAP_IDS,type MapId} from '../shared/maps.ts';
 const mapQueries=new Map(MAP_IDS.map(id=>[id,getMap(id).boxes.map(solidQuery)]));
 import {newInventory,updateInventory,consumeRound,type Inventory,WEAPONS,recoil,projectileStep,type Projectile} from '../shared/gunplay.ts';
@@ -25,7 +25,7 @@ if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid port');
 const origins=new Set((process.env.ALLOWED_ORIGINS??'http://localhost:5173,http://127.0.0.1:5173').split(','));
 const worlds=new Map(await Promise.all(MAP_IDS.map(async id=>[id,await createArena(id)] as const)));
 const world=worlds.get('canyon')!,handles=new Set<number>(),history=new History(32),lifecycle=new AgonesLifecycle();
-let tick=0,nextId=1,running=true;
+let tick=0,nextId=1,nextProjectile=1,running=true;
 interface Queued {input:Input;receiptTick:number}
 interface Peer {
   id:number;mapId:MapId;lastPing:number;character:number;name:string;mode:GameMode;team:Team;kills:number;assists:number;deaths:number;respawnAt:number;protectedUntil:number;contributors:Map<number,{damage:number;time:number}>;inventory:Inventory;sub:string;ws:WebSocket;motor:RapierMotor;queue:Queued[];head:number;
@@ -53,6 +53,7 @@ function event(mode:GameMode,data:Record<string,unknown>,mapId:MapId='canyon'):v
 function wallDistance(o:{x:number;y:number;z:number},d:{x:number;y:number;z:number},range=200,mapId:MapId='canyon'):number {
   return traceSolids(o,d,mapQueries.get(mapId)!,range);
 }
+function surfaceAt(o:{x:number;y:number;z:number},d:{x:number;y:number;z:number},distance:number,mapId:MapId):string {const queries=mapQueries.get(mapId)!;const i=queries.findIndex(q=>Math.abs((raySolid(o,d,q)??Infinity)-distance)<0.02);return getMap(mapId).boxes[i]?.kind??'ground';}
 function damage(id:number,epoch:number,amount:number,owner:Peer):void {
   const target=peers.get(id);if(!target)return;
   if(applyHit(target,owner,epoch,amount,tick,peers)!=='kill')return;
@@ -66,15 +67,19 @@ function shoot(p:Peer,queued:Queued|undefined):void {
   const pattern=recoil(p.shotIndex++),d=direction(input.yaw+pattern.yaw,
     Math.max(-Math.PI/2,Math.min(Math.PI/2,input.pitch+pattern.pitch))),o=eye(p.motor.state);
   if(input.weapon===1){
-    if(projectiles.length<256)projectiles.push({owner:p.id,ownerEpoch:p.epoch,p:{...o},
+    event(p.mode,{type:'shot',id:nextProjectile,owner:p.id,weapon:1,from:o,to:o},p.mapId);
+    if(projectiles.length<256)projectiles.push({id:nextProjectile++,owner:p.id,ownerEpoch:p.epoch,p:{...o},
       v:{x:d.x*40,y:d.y*40,z:d.z*40},life:3*TICK_HZ,damage:weapon.damage});return;
   }
   // Historical targets; source is the server-simulated position of this command, never a client origin.
   const now=tick*DT,query=rewindTime(now,{rttMs:p.rtt,interpolationMs:50,
     queueMs:queued?(tick-queued.receiptTick)*DT*1000:0});
-  const historical=history.sample(query);if(!historical)return;
+  const historical=history.sample(query)??[];
   const ids=new Set(targets(p).map(e=>e.id)),boxes=historical.filter(b=>ids.has(b.id));
   const hit=castHistorical(o,d,p.id,boxes,wallDistance(o,d,200,p.mapId),weapon.range);
+  const distance=hit?.distance??wallDistance(o,d,weapon.range,p.mapId),to={x:o.x+d.x*distance,y:o.y+d.y*distance,z:o.z+d.z*distance};
+  event(p.mode,{type:'shot',id:nextProjectile++,owner:p.id,weapon:0,from:o,to},p.mapId);
+  if(distance<weapon.range)event(p.mode,{type:'impact',p:to,surface:hit?'flesh':surfaceAt(o,d,distance,p.mapId)},p.mapId);
   if(hit)damage(hit.id,hit.epoch,weapon.damage,p);
 }
 function fixedTick():void {
@@ -97,14 +102,16 @@ function fixedTick():void {
   const boxes=[...peers.values()].map(p=>bodyHitbox(p.id,p.epoch,p.motor.state.p,p.motor.state.crouched));
   for(let i=projectiles.length-1;i>=0;i--){
     const projectile=projectiles[i],segment=projectileStep(projectile,DT),owner=peers.get(projectile.owner);
+    if(!owner){projectiles.splice(i,1);continue;}
     const wall=wallDistance(segment.from,segment.direction,segment.distance,owner?.mapId);
     const ids=new Set(owner?targets(owner).map(e=>e.id):[]);
     const hit=castHistorical(segment.from,segment.direction,projectile.owner,boxes.filter(b=>ids.has(b.id)),wall,segment.distance);
     if(hit&&owner&&owner.epoch===projectile.ownerEpoch)damage(hit.id,hit.epoch,projectile.damage,owner);
-    if(hit||wall<segment.distance||projectile.life<=0)projectiles.splice(i,1);
+    if(hit||wall<segment.distance||projectile.life<=0){const distance=hit?.distance??Math.min(wall,segment.distance),p={x:segment.from.x+segment.direction.x*distance,y:segment.from.y+segment.direction.y*distance,z:segment.from.z+segment.direction.z*distance};event(owner.mode,{type:'impact',id:projectile.id,p,surface:hit?'flesh':surfaceAt(segment.from,segment.direction,distance,owner.mapId)},owner.mapId);projectiles.splice(i,1);}
   }
   if(tick%4===0){ // 32 snapshots/s independent from 128 physics ticks/s
     for(const mapId of MAP_IDS)for(const mode of ['ffa','tdm','domination','ctf'] as const){
+      event(mode,{type:'projectiles',tick,rows:projectiles.filter(q=>{const p=peers.get(q.owner);return p?.mapId===mapId&&p.mode===mode;}).map(q=>({id:q.id,p:q.p}))},mapId);
       const currentRoom=room(mode,mapId),members=[...peers.values()].filter(p=>p.mode===mode&&p.mapId===mapId);
       if(currentRoom.end&&tick>=currentRoom.end){
         const winners=members.slice().sort((a,b)=>b.kills-a.kills);

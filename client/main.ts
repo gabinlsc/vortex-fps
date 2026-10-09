@@ -1,3 +1,5 @@
+import {AuthoritativeEffects} from './authoritative-effects.ts';
+import {Ambience} from './ambience.ts';
 import {ObjectiveView} from './objectives.ts';
 import {solidQuery,traceSolids} from '../shared/arena-geometry.ts';
 import {themeArena,animateBiomes} from './biomes.ts';
@@ -23,6 +25,7 @@ let effects:CombatEffects,hitUntil=0,hurtUntil=0;
 const element=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id)! as T;
 const canvas=element<HTMLCanvasElement>('scene'),menu=element('menu'),status=element('status');
 let ws:WebSocket|undefined,self=0,seq=0,yaw=0,pitch=0,weapon=0,character=0,mode:GameMode='ffa',buttons=0,latest:Snapshot|undefined;
+const ambience=new Ambience();let serverEffects:AuthoritativeEffects;
 let objectiveView:ObjectiveView;
 let selectedMap:MapId='canyon',mapBusy=false;
 let ignoreLook=true;
@@ -92,7 +95,7 @@ function requestControl():void {
   try{const request=canvas.requestPointerLock();if(request)void request.catch(()=>{status.textContent='Clique sur Reprendre pour capturer la souris.';});}catch{status.textContent='La capture de la souris nécessite un clic.';}
 }
 function resetSession():void {
-  shotTracker.clear();effects?.clear();hitUntil=hurtUntil=0;send=[];
+  shotTracker.clear();effects?.clear();serverEffects?.clear();hitUntil=hurtUntil=0;send=[];
   self=0;connected=false;latest=undefined;authority=undefined;seq=0;buttons=0;edgeButtons=0;keys.clear();accumulator=0;
   for(const mesh of enemies.values()){disposeName(mesh);scene?.remove(mesh);}enemies.clear();
   document.body.classList.remove('connected','playing');element('scoreboard').hidden=true;
@@ -167,7 +170,7 @@ function minimap(s:Snapshot,me:PlayerSnapshot):void{
   for(const p of s.players){if(p.health<=0||p.id!==self&&(!s.mode||p.team!==me.team))continue;ctx.fillStyle=p.id===self?'#c4ff9d':'#74eaff';ctx.beginPath();ctx.arc((p.state.p.x+64)*scale,(p.state.p.z+64)*scale,p.id===self?3:2,0,Math.PI*2);ctx.fill();}
 }
 element<HTMLFormElement>('lobby').onsubmit=e=>{
-  e.preventDefault();if(!motor||mapBusy)return;audio.unlock();
+  e.preventDefault();if(!motor||mapBusy)return;audio.unlock();ambience.unlock();
   if(self&&ws?.readyState===WebSocket.OPEN){requestControl();return;}
   if(ws)return;
   let name:string;try{name=nickname(nameInput.value);}catch(err){status.textContent=String(err);return;}
@@ -180,7 +183,8 @@ element<HTMLFormElement>('lobby').onsubmit=e=>{
     if(ws!==socket)return;
     try{
       if(typeof e.data==='string'){
-        const message=JSON.parse(e.data);if(message.type==='kill')feed(String(message.killer)+' → '+String(message.victim));
+        const message=JSON.parse(e.data);if(message.type==='shot')serverEffects.shot(message,performance.now()/1000);if(message.type==='projectiles')serverEffects.projectiles(message.rows);if(message.type==='impact')serverEffects.impact(message.p,message.surface,performance.now()/1000);
+        if(message.type==='kill')feed(String(message.killer)+' → '+String(message.victim));
         if(message.type==='objectives')objectiveView.update(message.state,message.mode,message.tick);
         if(message.type==='ping')objectiveView.ping(message.p,performance.now()/1000+6);
         if(message.type==='round')feed('FIN DE MANCHE · '+String(message.winner));return;
@@ -193,7 +197,7 @@ element<HTMLFormElement>('lobby').onsubmit=e=>{
         if(me.health<previousMe.health){hurtUntil=time+0.3;audio.play('hurt');}
       }
       for(const shooter of shotTracker.observe(s.players)){
-        effects.shot(shooter,shooter.id===s.self);
+        // Online visual trajectories come exclusively from authoritative events.
         if(shooter.id===s.self){viewWeapon.shot(time);if(document.pointerLockElement===canvas)audio.play(shooter.weapon?'pulse':'rail');}
       }
       latest=s;self=s.self;clock.observe(s.time,performance.now()/1000,s.rttMs);interpolator.add(s);authority=me;
@@ -243,7 +247,9 @@ function frame(now:number):void{
   const targetFov=settings.fov+(active&&!settings.reducedMotion?Math.min(8,Math.max(0,speed-8)*0.6):0);
   if(Math.abs(camera.fov-targetFov)>0.01){camera.fov+=(targetFov-camera.fov)*(1-Math.exp(-elapsed*8));camera.updateProjectionMatrix();}
   viewWeapon.update(elapsed,time,speed,weapon,active,Boolean(me?.reloadLeft),settings.reducedMotion);
-  effects.update(elapsed);objectiveView?.animate(time);if(!settings.reducedMotion){animateArena(scene,time);animateBiomes(scene,time,(document.getElementById('fauna-toggle') as HTMLInputElement)?.checked!==false);}
+  serverEffects.enabled=settings.effects;serverEffects.update(elapsed,time);effects.update(elapsed);
+  const floor=getMap(selectedMap).boxes.find(b=>b.kind!=='ground'&&Math.abs(position.x-b.p[0])<b.h[0]&&Math.abs(position.z-b.p[2])<b.h[2]&&Math.abs(position.y-1-b.p[1]-b.h[1])<0.6);ambience.update(time,speed,motor.state.grounded,arenaZone(position.x,position.y,position.z),floor?.kind??'ground',settings.volume/100,active);
+  objectiveView?.animate(time);if(!settings.reducedMotion){animateArena(scene,time);animateBiomes(scene,time,(document.getElementById('fauna-toggle') as HTMLInputElement)?.checked!==false);}
   if(document.hidden)return;
   renderer.render(scene,camera);if(active&&me&&me.health>0)viewWeapon.render(renderer);else if(!self)showroom.render(renderer,now/1000,character,weapon);
   if(performance.now()-started>1000)console.warn('Vortex slow frame',Math.round(performance.now()-started),predictor.pending.length);
@@ -258,7 +264,7 @@ async function boot():Promise<void>{
   const intro=menu.querySelector('.intro');if(intro)intro.textContent='Sous les falaises, à travers les jardins. Prends les rampes, domine les toits.';
   const brand=document.querySelector('#brand span');if(brand)brand.textContent=' / 05';
   scene=new THREE.Scene();buildArena(scene,selectedMap);camera=new THREE.PerspectiveCamera(settings.fov,innerWidth/innerHeight,0.05,260);camera.rotation.order='YXZ';
-  effects=new CombatEffects(scene,getMap(selectedMap).boxes);objectiveView=new ObjectiveView(scene,selectedMap);showroom=new Showroom();viewWeapon=new ViewWeapon();viewWeapon.resize(camera.aspect);applySettings();
+  effects=new CombatEffects(scene,getMap(selectedMap).boxes);objectiveView=new ObjectiveView(scene,selectedMap);serverEffects=new AuthoritativeEffects(scene);showroom=new Showroom();viewWeapon=new ViewWeapon();viewWeapon.resize(camera.aspect);applySettings();
   world=await createArena(selectedMap);const start=getMap(selectedMap).spawns[0];motor=new RapierMotor(world,initialState(start[0],start[1],start[2]),new Set(),selectedMap);world.step();
   predictor=new Predictor(motor,()=>world.step());join.disabled=false;status.textContent='Prêt. Choisis ton pseudo, ton mode et ton équipement.';lastFrame=performance.now();requestAnimationFrame(frame);
 }
