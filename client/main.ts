@@ -1,3 +1,5 @@
+import {Training,type OfflineMode} from './training.ts';
+import {Recorder,parseReplay,download,AdaptiveResolution,type Replay} from './replay.ts';
 import {AuthoritativeEffects} from './authoritative-effects.ts';
 import {Ambience} from './ambience.ts';
 import {ObjectiveView} from './objectives.ts';
@@ -26,6 +28,7 @@ const element=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElemen
 const canvas=element<HTMLCanvasElement>('scene'),menu=element('menu'),status=element('status');
 let ws:WebSocket|undefined,self=0,seq=0,yaw=0,pitch=0,weapon=0,character=0,mode:GameMode='ffa',buttons=0,latest:Snapshot|undefined;
 const ambience=new Ambience();let serverEffects:AuthoritativeEffects;
+let training:Training|undefined,photo=false,spectatorId=0,replay:Replay|undefined,replayStart=0;const recorder=new Recorder(),adaptive=new AdaptiveResolution();
 let objectiveView:ObjectiveView;
 let selectedMap:MapId='canyon',mapBusy=false;
 let ignoreLook=true;
@@ -73,7 +76,7 @@ const silhouettes=[
 weaponOptions.innerHTML=WEAPONS.map((w,i)=>'<button type="button" class="option" data-weapon="'+i+'" aria-pressed="false">'+silhouettes[i]+'<strong>'+w.name.toUpperCase()+'</strong><small>'+(i?'Projectile · 24 coups / chargeur':'Hitscan · 6 coups / chargeur')+'</small></button>').join('');
 characterOptions.innerHTML=CHARACTERS.map((c,i)=>'<button type="button" class="option" data-character="'+i+'" aria-pressed="false"><span class="pilot-chip" style="--pilot:#'+c.accent.toString(16).padStart(6,'0')+'"></span><strong>'+c.name+'</strong></button>').join('');
 function refreshLoadout():void{
-  const locked=Boolean(ws);
+  const locked=Boolean(ws)||Boolean(training)||Boolean(replay);
   weaponOptions.querySelectorAll<HTMLButtonElement>('button').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.weapon)===weapon)));
   characterOptions.querySelectorAll<HTMLButtonElement>('button').forEach(b=>{b.setAttribute('aria-pressed',String(Number(b.dataset.character)===character));b.disabled=locked;});
   modeOptions.querySelectorAll<HTMLButtonElement>('button').forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.mode===mode));b.disabled=locked;});
@@ -95,7 +98,7 @@ function requestControl():void {
   try{const request=canvas.requestPointerLock();if(request)void request.catch(()=>{status.textContent='Clique sur Reprendre pour capturer la souris.';});}catch{status.textContent='La capture de la souris nécessite un clic.';}
 }
 function resetSession():void {
-  shotTracker.clear();effects?.clear();serverEffects?.clear();hitUntil=hurtUntil=0;send=[];
+  training?.dispose();training=undefined;photo=false;replay=undefined;if(document.getElementById('training-status'))element('training-status').textContent='';document.body.classList.remove('photo-mode');shotTracker.clear();effects?.clear();serverEffects?.clear();hitUntil=hurtUntil=0;send=[];
   self=0;connected=false;latest=undefined;authority=undefined;seq=0;buttons=0;edgeButtons=0;keys.clear();accumulator=0;
   for(const mesh of enemies.values()){disposeName(mesh);scene?.remove(mesh);}enemies.clear();
   document.body.classList.remove('connected','playing');element('scoreboard').hidden=true;
@@ -111,10 +114,13 @@ function updateButtons():void {
     Number(keys.has('KeyR'))*Button.Reload|(buttons&Button.Fire);
 }
 addEventListener('keydown',e=>{
+  if(e.code==='Escape'&&replay){resetSession();return;}
   if(e.code==='Tab'&&self&&(document.pointerLockElement===canvas||!(document.activeElement instanceof HTMLInputElement))){e.preventDefault();element('scoreboard').hidden=false;return;}
   if(document.pointerLockElement!==canvas||!self)return;e.preventDefault();keys.add(e.code);
   if(!e.repeat&&e.code==='KeyR')edgeButtons|=Button.Reload;if(!e.repeat&&e.code==='Space')edgeButtons|=Button.Jump;
   if(e.code==='KeyG'&&!e.repeat&&(latest?.players.find(p=>p.id===self)?.team??0)>0&&ws?.readyState===WebSocket.OPEN){const d=new THREE.Vector3();camera.getWorldDirection(d);const range=traceSolids(camera.position,d,getMap(selectedMap).boxes.map(solidQuery),60),p=camera.position.clone().addScaledVector(d,range);p.y=Math.max(0,Math.min(30,p.y));if(Math.abs(p.x)<=63&&Math.abs(p.z)<=63)ws.send(JSON.stringify({type:'ping',p:{x:p.x,y:p.y,z:p.z}}));}
+  if(e.code==='KeyP'&&photo){renderer.render(scene,camera);canvas.toBlob(blob=>{if(blob)download(blob,'vortex-photo.png');},'image/png');}
+  if((e.code==='ArrowRight'||e.code==='ArrowLeft')&&latest?.players.find(p=>p.id===self)?.health===0){const ids=latest.players.filter(p=>p.id!==self&&p.health>0).map(p=>p.id),index=ids.indexOf(spectatorId);spectatorId=ids[(index+(e.code==='ArrowRight'?1:ids.length-1)+ids.length)%ids.length]??0;}
   if(e.code==='Digit1')weapon=0;if(e.code==='Digit2')weapon=1;
   if(e.code==='Digit1'||e.code==='Digit2')refreshLoadout();updateButtons();
 });
@@ -124,7 +130,7 @@ element('close-scores').onclick=()=>{element('scoreboard').hidden=true;};
 addEventListener('blur',()=>{keys.clear();buttons=0;element('scoreboard').hidden=true;});
 addEventListener('mousemove',e=>{if(document.pointerLockElement!==canvas||!self)return;if(ignoreLook){ignoreLook=false;return;}yaw-=e.movementX*0.002*settings.sensitivity;pitch=Math.max(-Math.PI/2,Math.min(Math.PI/2,pitch-e.movementY*0.002*settings.sensitivity));});
 canvas.addEventListener('wheel',e=>{if(document.pointerLockElement!==canvas||!self)return;e.preventDefault();weapon=1-weapon;refreshLoadout();},{passive:false});
-canvas.addEventListener('mousedown',e=>{if(e.button===0&&document.pointerLockElement===canvas&&self){buttons|=Button.Fire;edgeButtons|=Button.Fire;}});
+canvas.addEventListener('mousedown',e=>{if(e.button===0&&!photo&&document.pointerLockElement===canvas&&self){buttons|=Button.Fire;edgeButtons|=Button.Fire;}});
 addEventListener('mouseup',e=>{if(e.button===0)buttons&=~Button.Fire;});
 function feed(text:string):void {
   const row=document.createElement('div');row.className='feed-row';row.textContent=text;const list=element('killfeed');list.prepend(row);
@@ -170,7 +176,7 @@ function minimap(s:Snapshot,me:PlayerSnapshot):void{
   for(const p of s.players){if(p.health<=0||p.id!==self&&(!s.mode||p.team!==me.team))continue;ctx.fillStyle=p.id===self?'#c4ff9d':'#74eaff';ctx.beginPath();ctx.arc((p.state.p.x+64)*scale,(p.state.p.z+64)*scale,p.id===self?3:2,0,Math.PI*2);ctx.fill();}
 }
 element<HTMLFormElement>('lobby').onsubmit=e=>{
-  e.preventDefault();if(!motor||mapBusy)return;audio.unlock();ambience.unlock();
+  e.preventDefault();if(!motor||mapBusy)return;audio.unlock();ambience.unlock();if(training){requestControl();return;}
   if(self&&ws?.readyState===WebSocket.OPEN){requestControl();return;}
   if(ws)return;
   let name:string;try{name=nickname(nameInput.value);}catch(err){status.textContent=String(err);return;}
@@ -200,7 +206,7 @@ element<HTMLFormElement>('lobby').onsubmit=e=>{
         // Online visual trajectories come exclusively from authoritative events.
         if(shooter.id===s.self){viewWeapon.shot(time);if(document.pointerLockElement===canvas)audio.play(shooter.weapon?'pulse':'rail');}
       }
-      latest=s;self=s.self;clock.observe(s.time,performance.now()/1000,s.rttMs);interpolator.add(s);authority=me;
+      recorder.record(s);latest=s;self=s.self;clock.observe(s.time,performance.now()/1000,s.rttMs);interpolator.add(s);authority=me;
       if(!connected){connected=true;seq=me.ack;character=me.character??0;yaw=Math.atan2(me.state.p.x,me.state.p.z);pitch=0;refreshLoadout();join.disabled=false;status.textContent='Partie prête. Clique sur Reprendre si la souris est libre.';}
       document.body.classList.add('connected');
       const ids=new Set(s.players.filter(p=>p.id!==self).map(p=>p.id));
@@ -235,24 +241,26 @@ function frame(now:number):void{
   }else{
     accumulator=0;send=[];const angle=now*0.000022;camera.position.set(Math.sin(angle)*52,32,Math.cos(angle)*52);camera.lookAt(0,3,0);
   }
+  if(photo&&training&&document.pointerLockElement===canvas){camera.rotation.set(pitch,yaw,0,'YXZ');const d=new THREE.Vector3(Number(keys.has('KeyD'))-Number(keys.has('KeyA')||keys.has('KeyQ')),Number(keys.has('Space'))-Number(keys.has('KeyC')),Number(keys.has('KeyS'))-Number(keys.has('KeyW')||keys.has('KeyZ')));d.applyEuler(camera.rotation);camera.position.addScaledVector(d,elapsed*(keys.has('ShiftLeft')?20:8));}
   const active=Boolean(self)&&document.pointerLockElement===canvas,me=latest?.players.find(p=>p.id===self);
   document.body.classList.toggle('playing',active);
   const speed=Math.hypot(motor.state.v.x,motor.state.v.z),time=now/1000;
   element('speed').textContent=speed.toFixed(1);
   const position=motor.state.p;
-  element('location-label').textContent=arenaZone(position.x,position.y,position.z);
+  element('location-label').textContent=me?.health===0?'SPECTATEUR / ? ? pour changer':arenaZone(position.x,position.y,position.z);
   element('hitmarker').classList.toggle('visible',active&&time<hitUntil);
   element('damage-flash').classList.toggle('visible',active&&time<hurtUntil);
   element('vitals').classList.toggle('critical',Boolean(me&&me.health>0&&me.health<=35));
   const targetFov=settings.fov+(active&&!settings.reducedMotion?Math.min(8,Math.max(0,speed-8)*0.6):0);
-  if(Math.abs(camera.fov-targetFov)>0.01){camera.fov+=(targetFov-camera.fov)*(1-Math.exp(-elapsed*8));camera.updateProjectionMatrix();}
+  if(!photo&&Math.abs(camera.fov-targetFov)>0.01){camera.fov+=(targetFov-camera.fov)*(1-Math.exp(-elapsed*8));camera.updateProjectionMatrix();}
   viewWeapon.update(elapsed,time,speed,weapon,active,Boolean(me?.reloadLeft),settings.reducedMotion);
   serverEffects.enabled=settings.effects;serverEffects.update(elapsed,time);effects.update(elapsed);
   const floor=getMap(selectedMap).boxes.find(b=>b.kind!=='ground'&&Math.abs(position.x-b.p[0])<b.h[0]&&Math.abs(position.z-b.p[2])<b.h[2]&&Math.abs(position.y-1-b.p[1]-b.h[1])<0.6);ambience.update(time,speed,motor.state.grounded,arenaZone(position.x,position.y,position.z),floor?.kind??'ground',settings.volume/100,active);
   objectiveView?.animate(time);if(!settings.reducedMotion){animateArena(scene,time);animateBiomes(scene,time,(document.getElementById('fauna-toggle') as HTMLInputElement)?.checked!==false);}
   if(document.hidden)return;
-  renderer.render(scene,camera);if(active&&me&&me.health>0)viewWeapon.render(renderer);else if(!self)showroom.render(renderer,now/1000,character,weapon);
+  renderer.render(scene,camera);if(active&&me&&me.health>0)viewWeapon.render(renderer);else if(!self&&!replay)showroom.render(renderer,now/1000,character,weapon);
   if(performance.now()-started>1000)console.warn('Vortex slow frame',Math.round(performance.now()-started),predictor.pending.length);
+  if((document.getElementById('adaptive-toggle') as HTMLInputElement)?.checked&&!document.hidden){const scale=adaptive.step(elapsed*1000,now),base=settings.quality==='low'?0.6:Math.min(devicePixelRatio,settings.quality==='high'?1.75:1.25);if(Math.abs(renderer.getPixelRatio()-base*scale)>0.02)renderer.setPixelRatio(base*scale);}
   frames++;if(now-fpsTime>=500){fps=Math.round(frames*1000/(now-fpsTime));frames=0;fpsTime=now;element('performance').textContent=fps+' FPS · '+(latest?.rttMs??0).toFixed(0)+' ms'+(predictor.pending.length>=64?' · SYNCHRONISATION':'');}
 }
 let send:Input[]=[];
@@ -269,7 +277,15 @@ async function boot():Promise<void>{
   predictor=new Predictor(motor,()=>world.step());join.disabled=false;status.textContent='Prêt. Choisis ton pseudo, ton mode et ton équipement.';lastFrame=performance.now();requestAnimationFrame(frame);
 }
 const mapSelect=document.createElement('select');mapSelect.id='map-select';mapSelect.setAttribute('aria-label','Carte');for(const id of ['canyon','harbor'] as const){const option=document.createElement('option');option.value=id;option.textContent=getMap(id).name;mapSelect.append(option);}modeOptions.before(mapSelect);
-mapSelect.onchange=async()=>{if(ws||mapBusy)return;mapBusy=true;join.disabled=true;try{selectedMap=mapSelect.value as MapId;motor.dispose();world.free();for(const object of [...scene.children])scene.remove(object);scene.userData.quality=undefined;buildArena(scene,selectedMap);effects=new CombatEffects(scene,getMap(selectedMap).boxes);world=await createArena(selectedMap);const p=getMap(selectedMap).spawns[0];motor=new RapierMotor(world,initialState(...p),new Set(),selectedMap);world.step();predictor=new Predictor(motor,()=>world.step());applySettings();status.textContent=getMap(selectedMap).name+' pr?te.';}finally{mapBusy=false;join.disabled=false;}};
+mapSelect.onchange=async()=>{if(ws||training||replay||mapBusy)return;mapBusy=true;join.disabled=true;try{selectedMap=mapSelect.value as MapId;motor.dispose();world.free();for(const object of [...scene.children])scene.remove(object);scene.userData.quality=undefined;buildArena(scene,selectedMap);effects=new CombatEffects(scene,getMap(selectedMap).boxes);world=await createArena(selectedMap);const p=getMap(selectedMap).spawns[0];motor=new RapierMotor(world,initialState(...p),new Set(),selectedMap);world.step();predictor=new Predictor(motor,()=>world.step());applySettings();status.textContent=getMap(selectedMap).name+' pr?te.';}finally{mapBusy=false;join.disabled=false;}};
 const theme=document.createElement('select');theme.id='theme-select';theme.setAttribute('aria-label','Ambiance');theme.innerHTML='<option value="day">Jour</option><option value="night">Nuit</option>';theme.value=localStorage.getItem('vortex-theme')==='night'?'night':'day';theme.setAttribute('data-night',String(theme.value==='night'));theme.onchange=()=>{localStorage.setItem('vortex-theme',theme.value);theme.setAttribute('data-night',String(theme.value==='night'));themeArena(scene,theme.value==='night');};document.getElementById('settings')!.append(theme);
 const fauna=document.createElement('label');fauna.className='setting-choice';fauna.textContent='Faune d?ambiance';const toggle=document.createElement('input');toggle.type='checkbox';toggle.id='fauna-toggle';toggle.checked=localStorage.getItem('vortex-fauna')!=='off';toggle.onchange=()=>{localStorage.setItem('vortex-fauna',toggle.checked?'on':'off');const group=scene.getObjectByName('ambient-fauna');if(group)group.visible=toggle.checked;};fauna.append(toggle);document.getElementById('settings')!.append(fauna);
+const tools=document.createElement('details');tools.id='training-tools';tools.innerHTML='<summary>Exploration et entra?nement hors ligne</summary><div class="tool-grid"></div><label class="setting-choice">Difficult? bots<select id="bot-difficulty"><option value="1">Facile</option><option value="2" selected>Normal</option><option value="3">Difficile</option></select></label><button type="button" id="photo-toggle">Mode photo ? P pour exporter</button><label class="setting-row">Focale photo<input id="photo-fov" type="range" min="35" max="110" value="70"></label><button type="button" id="replay-export">Exporter la relecture</button><label class="field">Ouvrir une relecture<input id="replay-import" type="file" accept=".json,application/json"></label>';document.getElementById('lobby')!.append(tools);
+const trainingStatus=document.createElement('div');trainingStatus.id='training-status';document.body.append(trainingStatus);
+for(const [id,label]of [['visit','Visite libre'],['range','Stand de tir'],['bots','Bots'],['course','Parcours chrono']] as const){const b=document.createElement('button');b.type='button';b.id='offline-'+id;b.textContent=label;tools.querySelector('.tool-grid')!.append(b);b.onclick=()=>{if(ws||!motor||mapBusy)return;resetSession();recorder.reset();audio.unlock();ambience.unlock();training=new Training(world,motor,scene,selectedMap,id,Number((document.getElementById('bot-difficulty') as HTMLSelectElement).value));self=1;document.body.classList.add('connected');latest=training.snapshot();refreshLoadout();requestControl();};}
+document.getElementById('photo-toggle')!.onclick=()=>{if(!training){status.textContent='Lance une visite hors ligne pour utiliser le mode photo.';return;}photo=!photo;document.body.classList.toggle('photo-mode',photo);camera.fov=Number((document.getElementById('photo-fov') as HTMLInputElement).value);camera.updateProjectionMatrix();requestControl();};
+document.getElementById('photo-fov')!.oninput=e=>{if(photo){camera.fov=Number((e.target as HTMLInputElement).value);camera.updateProjectionMatrix();}};
+document.getElementById('replay-export')!.onclick=()=>{if(!recorder.count){status.textContent='Joue une partie ou un entra?nement avant d?exporter.';return;}download(new Blob([JSON.stringify(recorder.export(selectedMap))],{type:'application/json'}),'vortex-replay.json');};
+document.getElementById('replay-import')!.onchange=async e=>{if(ws||training||mapBusy)return;const file=(e.target as HTMLInputElement).files?.[0];if(!file)return;try{if(file.size>12000000)throw new Error('12 Mo maximum.');const loaded=parseReplay(await file.text());if(loaded.mapId!==selectedMap){status.textContent='Choisis '+getMap(loaded.mapId).name+' avant cette relecture.';return;}resetSession();replay=loaded;replayStart=performance.now();menu.hidden=true;document.body.classList.add('connected');element('leave').hidden=false;}catch(err){status.textContent=String(err);}};
+const adaptiveLabel=document.createElement('label');adaptiveLabel.className='setting-choice';adaptiveLabel.textContent='R?solution adaptative';const adaptiveToggle=document.createElement('input');adaptiveToggle.id='adaptive-toggle';adaptiveToggle.type='checkbox';adaptiveToggle.checked=localStorage.getItem('vortex-adaptive')==='on';adaptiveToggle.onchange=()=>{localStorage.setItem('vortex-adaptive',adaptiveToggle.checked?'on':'off');adaptive.reset();applySettings();};adaptiveLabel.append(adaptiveToggle);document.getElementById('settings')!.append(adaptiveLabel);
 void boot().catch(err=>{status.textContent='Le moteur ne peut pas démarrer : '+String(err);join.disabled=true;});
