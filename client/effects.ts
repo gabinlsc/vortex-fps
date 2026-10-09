@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {BOXES} from '../shared/map.ts';
+import {solidQuery,traceSolids} from '../shared/arena-geometry.ts';
 import {recoil} from '../shared/gunplay.ts';
 import type {PlayerSnapshot} from '../shared/snapshot.ts';
 
@@ -9,8 +10,8 @@ const up=new THREE.Vector3(0,1,0);
 export class CombatEffects {
   private streaks:Streak[]=[];private cursor=0;
   private sparks:Spark[]=[];private sparkCursor=0;
-  private walls=BOXES.map(b=>new THREE.Box3(new THREE.Vector3(b.p[0]-b.h[0],b.p[1]-b.h[1],b.p[2]-b.h[2]),new THREE.Vector3(b.p[0]+b.h[0],b.p[1]+b.h[1],b.p[2]+b.h[2])));
-  private ray=new THREE.Ray();private point=new THREE.Vector3();
+  private walls=BOXES.map(solidQuery);
+  private point=new THREE.Vector3();
   enabled=true;
   constructor(scene:THREE.Scene){
     const beam=new THREE.CylinderGeometry(1,1,1,6),headGeometry=new THREE.OctahedronGeometry(0.11),sparkGeometry=new THREE.BoxGeometry(0.045,0.045,0.045);
@@ -28,22 +29,14 @@ export class CombatEffects {
     const pitch=Math.max(-Math.PI/2,Math.min(Math.PI/2,p.pitch+pattern.pitch)),yaw=p.yaw+pattern.yaw;
     s.origin.set(p.state.p.x,p.state.p.y+(p.state.crouched?0.35:0.65),p.state.p.z);
     s.direction.set(-Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch));
-    this.ray.set(s.origin,s.direction);s.distance=200;s.impact=false;
-    for(const wall of this.walls){
-      if(wall.containsPoint(s.origin)){s.distance=0;s.impact=true;break;}
-      if(this.ray.intersectBox(wall,this.point)){const d=this.point.distanceTo(s.origin);if(d<s.distance){s.distance=d;s.impact=true;}}
-    }
+    s.distance=traceSolids(s.origin,s.direction,this.walls,200);s.impact=s.distance<200;
     if(local&&s.distance>0.5){
       // Start the cosmetic streak beside the view weapon, converging on the
       // eye ray's wall contact. Damage still uses the server's original ray.
       this.point.copy(s.origin).addScaledVector(s.direction,s.distance);
       s.origin.x+=Math.cos(yaw)*0.25;s.origin.z-=Math.sin(yaw)*0.25;s.origin.y-=0.18;
       s.direction.copy(this.point).sub(s.origin);s.distance=s.direction.length();s.direction.normalize();
-      this.ray.set(s.origin,s.direction);
-      for(const wall of this.walls){
-        if(wall.containsPoint(s.origin)){s.distance=0;break;}
-        if(this.ray.intersectBox(wall,this.point))s.distance=Math.min(s.distance,this.point.distanceTo(s.origin));
-      }
+      s.distance=traceSolids(s.origin,s.direction,this.walls,s.distance);
     }
     s.weapon=p.weapon??0;s.age=0;s.active=true;s.mesh.visible=true;
     (s.glow.material as THREE.MeshBasicMaterial).color.setHex(s.weapon?0xffbd65:0x65ffea);

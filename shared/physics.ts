@@ -2,20 +2,19 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { Button, DT, type Input } from './input.ts';
 import { MOVE, copyState, integrateVelocity, clipVelocity, type MotionState } from './movement.ts';
 import { BOXES } from './map.ts';
+import {solidMesh} from './arena-geometry.ts';
 let rapierReady:Promise<void>|undefined;
 export async function createArena():Promise<RAPIER.World> {
   rapierReady??=RAPIER.init();
   await rapierReady;
   const world=new RAPIER.World({x:0,y:0,z:0}); world.timestep=DT;
-  for (const box of BOXES) {
-  world.createCollider(
-    RAPIER.ColliderDesc.cuboid(
-      box.h[0], box.h[1], box.h[2]
-    ).setTranslation(
-      box.p[0], box.p[1], box.p[2]
-    )
-  );
-}
+  for(const box of BOXES){
+    const data=box.shape?solidMesh(box):undefined;
+    const collider=data?RAPIER.ColliderDesc.convexHull(new Float32Array(data.vertices)):RAPIER.ColliderDesc.cuboid(...box.h);
+    if(!collider)throw new Error('Invalid arena convex solid');
+    const yaw=box.yaw??0;
+    world.createCollider(collider.setTranslation(...box.p).setRotation({x:0,y:Math.sin(yaw/2),z:0,w:Math.cos(yaw/2)}));
+  }
   world.step(); return world;
 }
 export class RapierMotor {
