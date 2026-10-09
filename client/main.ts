@@ -1,3 +1,4 @@
+import {themeArena,animateBiomes} from './biomes.ts';
 import * as THREE from 'three';
 import './style.css';
 import {createArena,RapierMotor} from '../shared/physics.ts';
@@ -36,7 +37,7 @@ function applySettings():void {
   if(effects){effects.enabled=settings.effects;if(!settings.effects)effects.clear();}
   if(renderer){
     const quality=new URLSearchParams(location.search).get('quality')==='low'?'low':settings.quality;
-    if(scene)configureArenaQuality(renderer,scene,quality);
+    if(scene){configureArenaQuality(renderer,scene,quality);themeArena(scene,document.getElementById('theme-select')?.getAttribute('data-night')==='true');}
     renderer.setPixelRatio(quality==='low'?0.6:Math.min(devicePixelRatio,quality==='high'?1.75:1.25));renderer.setSize(innerWidth,innerHeight);
   }
   for(const key of ['fov','sensitivity','volume'] as const){
@@ -235,7 +236,7 @@ function frame(now:number):void{
   const targetFov=settings.fov+(active&&!settings.reducedMotion?Math.min(8,Math.max(0,speed-8)*0.6):0);
   if(Math.abs(camera.fov-targetFov)>0.01){camera.fov+=(targetFov-camera.fov)*(1-Math.exp(-elapsed*8));camera.updateProjectionMatrix();}
   viewWeapon.update(elapsed,time,speed,weapon,active,Boolean(me?.reloadLeft),settings.reducedMotion);
-  effects.update(elapsed);if(!settings.reducedMotion)animateArena(scene,time);
+  effects.update(elapsed);if(!settings.reducedMotion){animateArena(scene,time);animateBiomes(scene,time,(document.getElementById('fauna-toggle') as HTMLInputElement)?.checked!==false);}
   if(document.hidden)return;
   renderer.render(scene,camera);if(active&&me&&me.health>0)viewWeapon.render(renderer);else if(!self)showroom.render(renderer,now/1000,character,weapon);
   if(performance.now()-started>1000)console.warn('Vortex slow frame',Math.round(performance.now()-started),predictor.pending.length);
@@ -256,4 +257,6 @@ async function boot():Promise<void>{
 }
 const mapSelect=document.createElement('select');mapSelect.id='map-select';mapSelect.setAttribute('aria-label','Carte');for(const id of ['canyon','harbor'] as const){const option=document.createElement('option');option.value=id;option.textContent=getMap(id).name;mapSelect.append(option);}modeOptions.before(mapSelect);
 mapSelect.onchange=async()=>{if(ws||mapBusy)return;mapBusy=true;join.disabled=true;try{selectedMap=mapSelect.value as MapId;motor.dispose();world.free();for(const object of [...scene.children])scene.remove(object);scene.userData.quality=undefined;buildArena(scene,selectedMap);effects=new CombatEffects(scene,getMap(selectedMap).boxes);world=await createArena(selectedMap);const p=getMap(selectedMap).spawns[0];motor=new RapierMotor(world,initialState(...p),new Set());world.step();predictor=new Predictor(motor,()=>world.step());applySettings();status.textContent=getMap(selectedMap).name+' pr?te.';}finally{mapBusy=false;join.disabled=false;}};
+const theme=document.createElement('select');theme.id='theme-select';theme.setAttribute('aria-label','Ambiance');theme.innerHTML='<option value="day">Jour</option><option value="night">Nuit</option>';theme.value=localStorage.getItem('vortex-theme')==='night'?'night':'day';theme.setAttribute('data-night',String(theme.value==='night'));theme.onchange=()=>{localStorage.setItem('vortex-theme',theme.value);theme.setAttribute('data-night',String(theme.value==='night'));themeArena(scene,theme.value==='night');};document.getElementById('settings')!.append(theme);
+const fauna=document.createElement('label');fauna.className='setting-choice';fauna.textContent='Faune d?ambiance';const toggle=document.createElement('input');toggle.type='checkbox';toggle.id='fauna-toggle';toggle.checked=localStorage.getItem('vortex-fauna')!=='off';toggle.onchange=()=>{localStorage.setItem('vortex-fauna',toggle.checked?'on':'off');const group=scene.getObjectByName('ambient-fauna');if(group)group.visible=toggle.checked;};fauna.append(toggle);document.getElementById('settings')!.append(fauna);
 void boot().catch(err=>{status.textContent='Le moteur ne peut pas démarrer : '+String(err);join.disabled=true;});

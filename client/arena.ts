@@ -1,3 +1,4 @@
+import {buildBiomes,illustratedStone} from './biomes.ts';
 import {buildDistricts} from './districts.ts';
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
@@ -56,7 +57,7 @@ export function buildArena(scene:THREE.Scene,mapId:MapId='canyon'):void {
   }
   for(const [surface,batch]of groups){
     const parts=batch.map(arenaGeometry),geometry=mergeGeometries(parts)!;for(const part of parts)part.dispose();
-    const mesh=new THREE.Mesh(geometry,paintedMaterial(surface,true));mesh.name='arena-'+surface;mesh.castShadow=surface!=='sand';mesh.receiveShadow=true;scene.add(mesh);
+    const mesh=new THREE.Mesh(geometry,surface==='sandstone'?illustratedStone():paintedMaterial(surface,true));mesh.name='arena-'+surface;mesh.castShadow=surface!=='sand';mesh.receiveShadow=true;scene.add(mesh);
   }
   const routeMaterial=new THREE.MeshToonMaterial({color:0xefd4a1,gradientMap:gradient});
   for(const points of ROUTES)scene.add(path(points,5.5,routeMaterial));
@@ -105,7 +106,7 @@ export function buildArena(scene:THREE.Scene,mapId:MapId='canyon'):void {
     const angle=i/20*Math.PI*2,height=20+i%5*5,mountain=new THREE.Mesh(new THREE.CylinderGeometry(6+i%4,16,height,6),mountainMaterial);
     mountain.position.set(Math.cos(angle)*130,height/2-3,Math.sin(angle)*130);scene.add(mountain);
   }
-  buildLandscape(scene,BOXES,ROUTES);buildDistricts(scene,mapId);
+  buildLandscape(scene,BOXES,ROUTES);buildDistricts(scene,mapId);buildBiomes(scene,mapId);
 }
 export function animateArena(scene:THREE.Scene,time:number):void {
   animateLandscape(scene,time);
