@@ -5,6 +5,7 @@ import {initialState} from '../shared/movement.ts';
 import {DT,Button,canonical,encodeBatch,type Input} from '../shared/input.ts';
 import {decodeSnapshot,type Snapshot,type PlayerSnapshot} from '../shared/snapshot.ts';
 import {MAP_VERSION,BOXES,SPAWNS,ROUTES,arenaZone} from '../shared/map.ts';
+import {getMap,type MapId} from '../shared/maps.ts';
 import {nickname,type GameMode} from '../shared/match.ts';
 import {Predictor,Interpolator,RenderClock,INTERPOLATION_MS} from './netcode.ts';
 import {CHARACTERS} from '../shared/characters.ts';
@@ -19,6 +20,7 @@ let effects:CombatEffects,hitUntil=0,hurtUntil=0;
 const element=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id)! as T;
 const canvas=element<HTMLCanvasElement>('scene'),menu=element('menu'),status=element('status');
 let ws:WebSocket|undefined,self=0,seq=0,yaw=0,pitch=0,weapon=0,character=0,mode:GameMode='ffa',buttons=0,latest:Snapshot|undefined;
+let selectedMap:MapId='canyon',mapBusy=false;
 let ignoreLook=true;
 let edgeButtons=0,authority:PlayerSnapshot|undefined,hudTime=0;
 let connected=false,accumulator=0,lastFrame=performance.now(),frames=0,fps=0,fpsTime=lastFrame;
@@ -68,7 +70,7 @@ function refreshLoadout():void{
   weaponOptions.querySelectorAll<HTMLButtonElement>('button').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.weapon)===weapon)));
   characterOptions.querySelectorAll<HTMLButtonElement>('button').forEach(b=>{b.setAttribute('aria-pressed',String(Number(b.dataset.character)===character));b.disabled=locked;});
   modeOptions.querySelectorAll<HTMLButtonElement>('button').forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.mode===mode));b.disabled=locked;});
-  nameInput.disabled=locked;
+  nameInput.disabled=locked;if(document.getElementById('map-select'))(document.getElementById('map-select') as HTMLSelectElement).disabled=locked;
   element('character-description').textContent=locked?'Pilote verrouillé pour la partie.':CHARACTERS[character].description;
   element('pilot-name').textContent=CHARACTERS[character].name.toUpperCase();
   element('weapon-hud').innerHTML=WEAPONS.map((w,i)=>'<span class="hud-weapon '+(weapon===i?'selected':'')+'">'+(i+1)+' / '+w.name.toUpperCase()+'<small id="mag-'+i+'">'+w.ammo+' / ∞</small></span>').join('');
@@ -150,16 +152,16 @@ function minimap(s:Snapshot,me:PlayerSnapshot):void{
   ctx.fillStyle='#09151ded';ctx.fillRect(0,0,170,170);
 
   ctx.strokeStyle='#e6d8ad';ctx.lineWidth=4;
-  for(const route of ROUTES){ctx.beginPath();route.forEach(([x,z],i)=>{if(i===0)ctx.moveTo((x+64)*scale,(z+64)*scale);else ctx.lineTo((x+64)*scale,(z+64)*scale);});ctx.stroke();}
+  for(const route of getMap(selectedMap).routes){ctx.beginPath();route.forEach(([x,z],i)=>{if(i===0)ctx.moveTo((x+64)*scale,(z+64)*scale);else ctx.lineTo((x+64)*scale,(z+64)*scale);});ctx.stroke();}
   // Draw solid cover over the navigation paths.
-  for(const b of BOXES){if(b.kind==='ground')continue;ctx.fillStyle=b.zone==='tree'?'#78b496':b.kind==='stone'?'#b28c76':b.kind==='crate'?'#e6b370':'#558da4';ctx.fillRect((b.p[0]-b.h[0]+64)*scale,(b.p[2]-b.h[2]+64)*scale,b.h[0]*2*scale,b.h[2]*2*scale);}
+  for(const b of getMap(selectedMap).boxes){if(b.kind==='ground')continue;ctx.fillStyle=b.zone==='tree'?'#78b496':b.kind==='stone'?'#b28c76':b.kind==='crate'?'#e6b370':'#558da4';ctx.fillRect((b.p[0]-b.h[0]+64)*scale,(b.p[2]-b.h[2]+64)*scale,b.h[0]*2*scale,b.h[2]*2*scale);}
   ctx.fillStyle='#d9eef0';ctx.font='bold 9px sans-serif';ctx.fillText('N',82,12);
   const px=(me.state.p.x+64)*scale,pz=(me.state.p.z+64)*scale;
   ctx.save();ctx.translate(px,pz);ctx.rotate(-yaw);ctx.fillStyle='#c4ff9d';ctx.beginPath();ctx.moveTo(0,-9);ctx.lineTo(-4,-3);ctx.lineTo(4,-3);ctx.closePath();ctx.fill();ctx.restore();
   for(const p of s.players){if(p.health<=0||p.id!==self&&(!s.mode||p.team!==me.team))continue;ctx.fillStyle=p.id===self?'#c4ff9d':'#74eaff';ctx.beginPath();ctx.arc((p.state.p.x+64)*scale,(p.state.p.z+64)*scale,p.id===self?3:2,0,Math.PI*2);ctx.fill();}
 }
 element<HTMLFormElement>('lobby').onsubmit=e=>{
-  e.preventDefault();if(!motor)return;audio.unlock();
+  e.preventDefault();if(!motor||mapBusy)return;audio.unlock();
   if(self&&ws?.readyState===WebSocket.OPEN){requestControl();return;}
   if(ws)return;
   let name:string;try{name=nickname(nameInput.value);}catch(err){status.textContent=String(err);return;}
@@ -167,7 +169,7 @@ element<HTMLFormElement>('lobby').onsubmit=e=>{
   if(location.protocol==='https:'&&!url.startsWith('wss://')){status.textContent='Configure VITE_GAME_URL en wss:// pour ce site HTTPS.';return;}
   predictor=new Predictor(motor,()=>world.step());interpolator=new Interpolator();clock=new RenderClock();seq=0;accumulator=0;
   const socket=new WebSocket(url);ws=socket;socket.binaryType='arraybuffer';join.disabled=true;refreshLoadout();status.textContent='Connexion au serveur…';requestControl();
-  socket.onopen=()=>{socket.send(JSON.stringify({version:2,map:MAP_VERSION,name,mode,character,ticket:element<HTMLInputElement>('ticket').value}));};
+  socket.onopen=()=>{socket.send(JSON.stringify({version:2,map:MAP_VERSION,name,mode,mapId:selectedMap,character,ticket:element<HTMLInputElement>('ticket').value}));};
   socket.onmessage=e=>{
     if(ws!==socket)return;
     try{
@@ -247,9 +249,11 @@ async function boot():Promise<void>{
   const subtitle=menu.querySelector('.map-card small');if(subtitle)subtitle.textContent='128 × 128 m · canyon · jardins · galeries · grottes';
   const intro=menu.querySelector('.intro');if(intro)intro.textContent='Sous les falaises, à travers les jardins. Prends les rampes, domine les toits.';
   const brand=document.querySelector('#brand span');if(brand)brand.textContent=' / 05';
-  scene=new THREE.Scene();buildArena(scene);camera=new THREE.PerspectiveCamera(settings.fov,innerWidth/innerHeight,0.05,260);camera.rotation.order='YXZ';
-  effects=new CombatEffects(scene);showroom=new Showroom();viewWeapon=new ViewWeapon();viewWeapon.resize(camera.aspect);applySettings();
-  world=await createArena();const start=SPAWNS[0];motor=new RapierMotor(world,initialState(start[0],start[1],start[2]),new Set());world.step();
+  scene=new THREE.Scene();buildArena(scene,selectedMap);camera=new THREE.PerspectiveCamera(settings.fov,innerWidth/innerHeight,0.05,260);camera.rotation.order='YXZ';
+  effects=new CombatEffects(scene,getMap(selectedMap).boxes);showroom=new Showroom();viewWeapon=new ViewWeapon();viewWeapon.resize(camera.aspect);applySettings();
+  world=await createArena(selectedMap);const start=getMap(selectedMap).spawns[0];motor=new RapierMotor(world,initialState(start[0],start[1],start[2]),new Set());world.step();
   predictor=new Predictor(motor,()=>world.step());join.disabled=false;status.textContent='Prêt. Choisis ton pseudo, ton mode et ton équipement.';lastFrame=performance.now();requestAnimationFrame(frame);
 }
+const mapSelect=document.createElement('select');mapSelect.id='map-select';mapSelect.setAttribute('aria-label','Carte');for(const id of ['canyon','harbor'] as const){const option=document.createElement('option');option.value=id;option.textContent=getMap(id).name;mapSelect.append(option);}modeOptions.before(mapSelect);
+mapSelect.onchange=async()=>{if(ws||mapBusy)return;mapBusy=true;join.disabled=true;try{selectedMap=mapSelect.value as MapId;motor.dispose();world.free();for(const object of [...scene.children])scene.remove(object);scene.userData.quality=undefined;buildArena(scene,selectedMap);effects=new CombatEffects(scene,getMap(selectedMap).boxes);world=await createArena(selectedMap);const p=getMap(selectedMap).spawns[0];motor=new RapierMotor(world,initialState(...p),new Set());world.step();predictor=new Predictor(motor,()=>world.step());applySettings();status.textContent=getMap(selectedMap).name+' pr?te.';}finally{mapBusy=false;join.disabled=false;}};
 void boot().catch(err=>{status.textContent='Le moteur ne peut pas démarrer : '+String(err);join.disabled=true;});

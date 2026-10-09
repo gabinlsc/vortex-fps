@@ -1,20 +1,20 @@
 ﻿import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
-import {BOXES,ROUTES} from '../shared/map.ts';
+import {BOXES,ROUTES,type ArenaBox} from '../shared/map.ts';
 import {toonMaterial} from './materials.ts';
 const sphere=new THREE.IcosahedronGeometry(1,1);
 const materials={leaves:toonMaterial(0x6eb497),leafLight:toonMaterial(0x95cba6),leafDark:toonMaterial(0x498974),soil:toonMaterial(0x76634f)};
 function canvasTexture(paint:(ctx:CanvasRenderingContext2D)=>void,size=128):THREE.CanvasTexture{
   const canvas=document.createElement('canvas');canvas.width=canvas.height=size;paint(canvas.getContext('2d')!);const t=new THREE.CanvasTexture(canvas);t.colorSpace=THREE.SRGBColorSpace;return t;
 }
-function routeDistance(x:number,z:number):number{
+function routeDistance(x:number,z:number,routes=ROUTES):number{
   let distance=Infinity;
-  for(const route of ROUTES)for(let i=1;i<route.length;i++){
+  for(const route of routes)for(let i=1;i<route.length;i++){
     const [ax,az]=route[i-1],[bx,bz]=route[i],dx=bx-ax,dz=bz-az,t=Math.max(0,Math.min(1,((x-ax)*dx+(z-az)*dz)/(dx*dx+dz*dz)));
     distance=Math.min(distance,Math.hypot(x-ax-t*dx,z-az-t*dz));
   }return distance;
 }
-export function buildLandscape(scene:THREE.Scene):void{
+export function buildLandscape(scene:THREE.Scene,solids:ArenaBox[]=BOXES,routes=ROUTES):void{
   const skyTexture=canvasTexture(ctx=>{
     const gradient=ctx.createLinearGradient(0,0,0,128);gradient.addColorStop(0,'#5a9eb9');gradient.addColorStop(0.45,'#acd2d1');gradient.addColorStop(0.63,'#e7d4b1');gradient.addColorStop(1,'#efd3ae');ctx.fillStyle=gradient;ctx.fillRect(0,0,128,128);
   });
@@ -31,12 +31,12 @@ export function buildLandscape(scene:THREE.Scene):void{
   const clouds=new THREE.Mesh(cloudGeometry,new THREE.MeshBasicMaterial({color:0xffeed5,transparent:true,opacity:0.6,depthWrite:false}));clouds.name='canyon-clouds';scene.add(clouds);
   // One instanced contact-shadow layer keeps low quality readable without shadow maps.
   const contactTexture=canvasTexture(ctx=>{const g=ctx.createRadialGradient(64,64,12,64,64,62);g.addColorStop(0,'#253b45b3');g.addColorStop(0.6,'#253b454d');g.addColorStop(1,'#253b4500');ctx.fillStyle=g;ctx.fillRect(0,0,128,128);});
-  const grounded=BOXES.filter(s=>s.kind!=='ground'&&s.zone!=='boundary'&&s.zone!=='cliff'&&Math.abs(s.p[1]-s.h[1])<0.02);
+  const grounded=solids.filter(s=>s.kind!=='ground'&&s.zone!=='boundary'&&s.zone!=='cliff'&&Math.abs(s.p[1]-s.h[1])<0.02);
   const shadows=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:contactTexture,transparent:true,opacity:0.32,depthWrite:false}),grounded.length),pose=new THREE.Object3D();
   grounded.forEach((s,i)=>{pose.position.set(s.p[0],0.045,s.p[2]);pose.rotation.set(-Math.PI/2,0,s.yaw??0);pose.scale.set(s.h[0]*2.6,s.h[2]*2.6,1);pose.updateMatrix();shadows.setMatrixAt(i,pose.matrix);});scene.add(shadows);
   const foliage=new THREE.Group();foliage.name='canyon-foliage';scene.add(foliage);
   // Garden trees have shared solid trunks; leaves are soft, penetrable foliage.
-  for(const tree of BOXES.filter(s=>s.zone==='tree')){
+  for(const tree of solids.filter(s=>s.zone==='tree')){
     for(let i=0;i<3;i++){
       const canopy=new THREE.Mesh(sphere,i%2?materials.leafLight:materials.leaves);canopy.position.set(tree.p[0]+(i-1)*0.85,6.5+i%2*0.75,tree.p[2]+(i%2?0.45:-0.1));canopy.scale.set(1.4,1.25,1.35);canopy.castShadow=true;canopy.receiveShadow=true;foliage.add(canopy);
     }
@@ -47,8 +47,8 @@ export function buildLandscape(scene:THREE.Scene):void{
   const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
   for(let attempt=0;positions.length<420&&attempt<5000;attempt++){
     const x=random()*120-60,z=random()*120-60;
-    if(Math.hypot(x,z)<17||routeDistance(x,z)<3.3)continue;
-    if(BOXES.some(s=>s.kind!=='ground'&&Math.abs(x-s.p[0])<s.h[0]+0.5&&Math.abs(z-s.p[2])<s.h[2]+0.5))continue;
+    if(Math.hypot(x,z)<17||routeDistance(x,z,routes)<3.3)continue;
+    if(solids.some(s=>s.kind!=='ground'&&Math.abs(x-s.p[0])<s.h[0]+0.5&&Math.abs(z-s.p[2])<s.h[2]+0.5))continue;
     positions.push(new THREE.Vector3(x,0,z));
   }
   const leafGeometry=new THREE.ConeGeometry(0.24,0.75,4),grass=new THREE.InstancedMesh(leafGeometry,materials.leafDark,positions.length);
@@ -64,7 +64,7 @@ export function buildLandscape(scene:THREE.Scene):void{
     const light=new THREE.PointLight(sign>0?0x8ce7d2:0xba9ce9,8,16,2);light.position.set(40*sign,2.2,16*sign);scene.add(light);
   }
   // Faceted upland trees live beyond the playable border.
-  for(const cliff of BOXES.filter(s=>s.zone==='cliff').filter((_,i)=>i%3===0)){
+  for(const cliff of solids.filter(s=>s.zone==='cliff').filter((_,i)=>i%3===0)){
     const top=cliff.p[1]+cliff.h[1];
     const trunk=new THREE.Mesh(new THREE.CylinderGeometry(0.45,0.65,4,6),toonMaterial(0x8d705a));trunk.position.set(cliff.p[0],top+2,cliff.p[2]);foliage.add(trunk);
     const crown=new THREE.Mesh(sphere,materials.leafDark);crown.position.set(cliff.p[0],top+5,cliff.p[2]);crown.scale.set(3.4,4.4,3.4);foliage.add(crown);

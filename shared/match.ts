@@ -18,8 +18,8 @@ export function assignTeam(mode:GameMode,teams:readonly Team[]):Team {
 export function canDamage(a:{mode:GameMode;team:Team},b:{mode:GameMode;team:Team}):boolean {
   return a.mode===b.mode&&(a.mode==='ffa'||a.team!==b.team);
 }
-export function chooseSpawn(team:Team,enemies:readonly {x:number;y:number;z:number}[],seed=0):VecTuple {
-  const pool=SPAWNS.filter(p=>team===0||(team===1?p[2]<0:p[2]>0));
+export function chooseSpawn(team:Team,enemies:readonly {x:number;y:number;z:number}[],seed=0,spawns:readonly VecTuple[]=SPAWNS):VecTuple {
+  const pool=spawns.filter(p=>team===0||(team===1?p[2]<0:p[2]>0));
   let best=pool[seed%pool.length],score=-Infinity;
   for(let i=0;i<pool.length;i++){
     const p=pool[(i+seed)%pool.length];

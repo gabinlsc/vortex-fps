@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {BOXES,ROUTES,SPAWNS,type ArenaBox,type SurfaceKind} from '../shared/map.ts';
+import {getMap,type MapId} from '../shared/maps.ts';
 import {solidMesh} from '../shared/arena-geometry.ts';
 import {buildLandscape,animateLandscape} from './landscape.ts';
 import {CEL_GRADIENT,paintedMaterial,toonMaterial,type PaintedSurface} from './materials.ts';
@@ -41,7 +42,8 @@ function path(points:readonly (readonly [number,number])[],width:number,m:THREE.
   const index:number[]=[];for(let i=0;i<79;i++)index.push(i*2,i*2+2,i*2+1,i*2+1,i*2+2,i*2+3);
   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(position,3));geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geometry.setIndex(index);geometry.computeVertexNormals();return new THREE.Mesh(geometry,m);
 }
-export function buildArena(scene:THREE.Scene):void {
+export function buildArena(scene:THREE.Scene,mapId:MapId='canyon'):void {
+  const {boxes:BOXES,routes:ROUTES,spawns:SPAWNS}=getMap(mapId);scene.userData.mapId=mapId;
   scene.background=new THREE.Color(0xb8d9d7);scene.fog=new THREE.Fog(0xc8d5c6,100,250);
   scene.add(new THREE.HemisphereLight(0xfff3df,0x626e69,1.05));
   const sun=new THREE.DirectionalLight(0xffe2b0,2.2);sun.name='arena-sun';sun.position.set(-45,80,-35);scene.add(sun);
@@ -102,7 +104,7 @@ export function buildArena(scene:THREE.Scene):void {
     const angle=i/20*Math.PI*2,height=20+i%5*5,mountain=new THREE.Mesh(new THREE.CylinderGeometry(6+i%4,16,height,6),mountainMaterial);
     mountain.position.set(Math.cos(angle)*130,height/2-3,Math.sin(angle)*130);scene.add(mountain);
   }
-  buildLandscape(scene);
+  buildLandscape(scene,BOXES,ROUTES);
 }
 export function animateArena(scene:THREE.Scene,time:number):void {
   animateLandscape(scene,time);

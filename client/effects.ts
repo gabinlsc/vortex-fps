@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {BOXES} from '../shared/map.ts';
+import {BOXES,type ArenaBox} from '../shared/map.ts';
 import {solidQuery,traceSolids} from '../shared/arena-geometry.ts';
 import {recoil} from '../shared/gunplay.ts';
 import type {PlayerSnapshot} from '../shared/snapshot.ts';
@@ -13,7 +13,8 @@ export class CombatEffects {
   private walls=BOXES.map(solidQuery);
   private point=new THREE.Vector3();
   enabled=true;
-  constructor(scene:THREE.Scene){
+  constructor(scene:THREE.Scene,boxes:ArenaBox[]=BOXES){
+    this.walls=boxes.map(solidQuery);
     const beam=new THREE.CylinderGeometry(1,1,1,6),headGeometry=new THREE.OctahedronGeometry(0.11),sparkGeometry=new THREE.BoxGeometry(0.045,0.045,0.045);
     for(let i=0;i<64;i++){
       const mesh=new THREE.Group(),core=new THREE.Mesh(beam,new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,depthWrite:false}));

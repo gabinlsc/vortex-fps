@@ -1,14 +1,14 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Button, DT, type Input } from './input.ts';
 import { MOVE, copyState, integrateVelocity, clipVelocity, type MotionState } from './movement.ts';
-import { BOXES } from './map.ts';
+import {getMap,type MapId} from './maps.ts';
 import {solidMesh} from './arena-geometry.ts';
 let rapierReady:Promise<void>|undefined;
-export async function createArena():Promise<RAPIER.World> {
+export async function createArena(mapId:MapId='canyon'):Promise<RAPIER.World> {
   rapierReady??=RAPIER.init();
   await rapierReady;
   const world=new RAPIER.World({x:0,y:0,z:0}); world.timestep=DT;
-  for(const box of BOXES){
+  for(const box of getMap(mapId).boxes){
     const data=box.shape?solidMesh(box):undefined;
     const collider=data?RAPIER.ColliderDesc.convexHull(new Float32Array(data.vertices)):RAPIER.ColliderDesc.cuboid(...box.h);
     if(!collider)throw new Error('Invalid arena convex solid');
