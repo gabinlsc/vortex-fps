@@ -121,7 +121,7 @@ test('character admission rejects unknown cosmetics and non-integer payloads',as
 });
 test('Rift spawn capsules are clear of solid cover and map has rotational symmetry',async()=>{
   const {BOXES,SPAWNS,MAP_VERSION}=await import('../shared/map.ts');
-  assert.equal(MAP_VERSION,'rift-outpost-4');
+  assert.equal(MAP_VERSION,'rift-canyon-5');
   for(const [x,y,z] of SPAWNS)for(const b of BOXES){
     const overlaps=Math.abs(x-b.p[0])<b.h[0]+MOVE.radius&&Math.abs(y-b.p[1])<b.h[1]+MOVE.standHalf+MOVE.radius&&Math.abs(z-b.p[2])<b.h[2]+MOVE.radius;
     assert.equal(overlaps,false,'spawn intersects static solid');
@@ -190,4 +190,17 @@ test('saved comfort settings tolerate corrupt values and bound render controls',
   assert.deepEqual(normalizeSettings({fov:NaN,sensitivity:'fast',volume:Infinity,quality:'ultra'}),DEFAULT_SETTINGS);
   const clamped=normalizeSettings({fov:500,sensitivity:-2,volume:125,quality:'low',effects:false,reducedMotion:true});
   assert.deepEqual(clamped,{fov:110,sensitivity:0.3,volume:100,quality:'low',effects:false,reducedMotion:true});
+});
+
+test('convex cover rejects empty rock corners and traces sloping ramp surfaces',async()=>{
+  const {solidQuery,raySolid}=await import('../shared/arena-geometry.ts');
+  const rock=solidQuery({p:[0,0,0],h:[1,1,1],kind:'stone',shape:'rock'});
+  assert.equal(raySolid({x:0.95,y:0.8,z:3},{x:0,y:0,z:-1},rock),null);
+  assert.ok(raySolid({x:0,y:0,z:3},{x:0,y:0,z:-1},rock)!>2);
+  const ramp=solidQuery({p:[20,3.5,0],h:[10,3.5,2.6],kind:'metal',shape:'ramp'});
+  close(raySolid({x:20,y:10,z:0},{x:0,y:-1,z:0},ramp)!,6.5);
+  close(raySolid({x:12,y:10,z:0},{x:0,y:-1,z:0},ramp)!,3.7);
+  const mirrored=solidQuery({p:[-20,3.5,0],h:[10,3.5,2.6],kind:'metal',shape:'ramp',yaw:Math.PI});
+  close(raySolid({x:-12,y:10,z:0},{x:0,y:-1,z:0},mirrored)!,3.7);
+  assert.equal(raySolid({x:0,y:0,z:0},{x:1,y:0,z:0},rock),0);
 });

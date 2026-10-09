@@ -64,3 +64,31 @@ test('both mirrored jump routes reach the reactor roof with the actual character
     }finally{motor.dispose();world.free();}
   }
 });
+
+test('roof and garden ramps can be walked in both directions without jumping',async()=>{
+  for(const sign of [-1,1])for(const garden of [false,true]){
+    const world=await createArena(),motor=new RapierMotor(world,initialState((garden?30:33)*sign,1.05,garden?36*sign:0),new Set());
+    let reached=false;
+    try{
+      for(let seq=1;seq<=1000;seq++){
+        motor.tick(canonical({seq,yaw:sign*Math.PI/2,pitch:0,buttons:Button.Forward,weapon:0,phase:0}));world.step();
+        const p=motor.state.p;if(Math.abs(p.x)<(garden?7.5:9.5)&&p.y>(garden?3.2:7.8)){reached=true;break;}
+      }
+      assert.ok(reached,`walkable ramp ${garden?'garden':'roof'} ${sign}: ${JSON.stringify(motor.state.p)}`);
+    }finally{motor.dispose();world.free();}
+  }
+});
+
+test('map raycasts match Rapier convex geometry including sloped and beveled faces',async()=>{
+  const {default:RAPIER}=await import('@dimforge/rapier3d-compat');
+  const {BOXES}=await import('../shared/map.ts'),{solidQuery,traceSolids}=await import('../shared/arena-geometry.ts');
+  const queries=BOXES.map(solidQuery),world=await createArena();
+  try{
+    for(let i=0;i<80;i++){
+      const origin={x:(i*23%120)-60,y:10+i%15,z:(i*37%120)-60};
+      const raw={x:Math.sin(i*1.4),y:-0.6,z:Math.cos(i*1.1)},length=Math.hypot(raw.x,raw.y,raw.z),d={x:raw.x/length,y:raw.y/length,z:raw.z/length};
+      const hit=world.castRay(new RAPIER.Ray(origin,d),200,true),expected=traceSolids(origin,d,queries,200);
+      assert.ok(Math.abs((hit?.timeOfImpact??200)-expected)<0.003,`ray ${i} disagrees: ${hit?.timeOfImpact} vs ${expected}`);
+    }
+  }finally{world.free();}
+});

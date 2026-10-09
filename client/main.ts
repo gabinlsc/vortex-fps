@@ -4,7 +4,7 @@ import {createArena,RapierMotor} from '../shared/physics.ts';
 import {initialState} from '../shared/movement.ts';
 import {DT,Button,canonical,encodeBatch,type Input} from '../shared/input.ts';
 import {decodeSnapshot,type Snapshot,type PlayerSnapshot} from '../shared/snapshot.ts';
-import {MAP_VERSION,BOXES,SPAWNS} from '../shared/map.ts';
+import {MAP_VERSION,BOXES,SPAWNS,ROUTES,arenaZone} from '../shared/map.ts';
 import {nickname,type GameMode} from '../shared/match.ts';
 import {Predictor,Interpolator,RenderClock,INTERPOLATION_MS} from './netcode.ts';
 import {CHARACTERS} from '../shared/characters.ts';
@@ -147,7 +147,8 @@ function minimap(s:Snapshot,me:PlayerSnapshot):void{
   const map=element<HTMLCanvasElement>('minimap'),ctx=map.getContext('2d')!,scale=170/128;
   ctx.fillStyle='#09151ded';ctx.fillRect(0,0,170,170);
 
-  ctx.strokeStyle='#e6d8ad';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(85,6);ctx.lineTo(85,164);ctx.moveTo(6,85);ctx.lineTo(164,85);ctx.stroke();
+  ctx.strokeStyle='#e6d8ad';ctx.lineWidth=4;
+  for(const route of ROUTES){ctx.beginPath();route.forEach(([x,z],i)=>{if(i===0)ctx.moveTo((x+64)*scale,(z+64)*scale);else ctx.lineTo((x+64)*scale,(z+64)*scale);});ctx.stroke();}
   // Draw solid cover over the navigation paths.
   for(const b of BOXES){if(b.kind==='ground')continue;ctx.fillStyle=b.kind==='stone'?'#8892ad':b.kind==='crate'?'#e6b370':'#558da4';ctx.fillRect((b.p[0]-b.h[0]+64)*scale,(b.p[2]-b.h[2]+64)*scale,b.h[0]*2*scale,b.h[2]*2*scale);}
   ctx.fillStyle='#d9eef0';ctx.font='bold 9px sans-serif';ctx.fillText('N',82,12);
@@ -223,7 +224,7 @@ function frame(now:number):void{
   const speed=Math.hypot(motor.state.v.x,motor.state.v.z),time=now/1000;
   element('speed').textContent=speed.toFixed(1);
   const position=motor.state.p;
-  element('location-label').textContent=Math.abs(position.x)<11&&Math.abs(position.z)<11?(position.y>7?'TOIT / REACTOR':'REACTOR'):Math.abs(position.x)>30&&Math.abs(position.z)<32?'GROTTES':Math.abs(position.z)>30&&Math.abs(position.x)<12?'JARDINS':position.z<0?'AZURE / NORTH':'EMBER / SOUTH';
+  element('location-label').textContent=arenaZone(position.x,position.y,position.z);
   element('hitmarker').classList.toggle('visible',active&&time<hitUntil);
   element('damage-flash').classList.toggle('visible',active&&time<hurtUntil);
   element('vitals').classList.toggle('critical',Boolean(me&&me.health>0&&me.health<=35));

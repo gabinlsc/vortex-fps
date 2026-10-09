@@ -7,8 +7,10 @@ import {initialState,copyState} from '../shared/movement.ts';
 import {Button,DT,TICK_HZ,decodeBatch,type Input} from '../shared/input.ts';
 import {encodeSnapshot,type PlayerSnapshot} from '../shared/snapshot.ts';
 import {BOXES,MAP_VERSION,SPAWNS} from '../shared/map.ts';
+import {solidQuery,traceSolids} from '../shared/arena-geometry.ts';
+const mapQueries=BOXES.map(solidQuery);
 import {newInventory,updateInventory,consumeRound,type Inventory,WEAPONS,recoil,projectileStep,type Projectile} from '../shared/gunplay.ts';
-import {History,bodyHitbox,direction,rewindTime,castHistorical,rayBox} from './lag-compensation.ts';
+import {History,bodyHitbox,direction,rewindTime,castHistorical} from './lag-compensation.ts';
 import {nickname,validateMode,assignTeam,canDamage,chooseSpawn,type GameMode,type Team} from '../shared/match.ts';
 import {validateCharacter} from '../shared/characters.ts';
 import {verifyTicket} from './tickets.ts';
@@ -45,7 +47,7 @@ function event(mode:GameMode,data:Record<string,unknown>):void {
 }
 
 function wallDistance(o:{x:number;y:number;z:number},d:{x:number;y:number;z:number},range=200):number {
-  let nearest=range;for(const b of BOXES){const t=rayBox(o,d,b.p,b.h);if(t!==null)nearest=Math.min(nearest,t);}return nearest;
+  return traceSolids(o,d,mapQueries,range);
 }
 function damage(id:number,epoch:number,amount:number,owner:Peer):void {
   const target=peers.get(id);if(!target)return;
