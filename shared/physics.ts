@@ -1,14 +1,15 @@
+import {applyTraversal} from './traversal.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Button, DT, type Input } from './input.ts';
 import { MOVE, copyState, integrateVelocity, clipVelocity, type MotionState } from './movement.ts';
-import { BOXES } from './map.ts';
+import {getMap,type MapId} from './maps.ts';
 import {solidMesh} from './arena-geometry.ts';
 let rapierReady:Promise<void>|undefined;
-export async function createArena():Promise<RAPIER.World> {
+export async function createArena(mapId:MapId='canyon'):Promise<RAPIER.World> {
   rapierReady??=RAPIER.init();
   await rapierReady;
   const world=new RAPIER.World({x:0,y:0,z:0}); world.timestep=DT;
-  for(const box of BOXES){
+  for(const box of getMap(mapId).boxes){
     const data=box.shape?solidMesh(box):undefined;
     const collider=data?RAPIER.ColliderDesc.convexHull(new Float32Array(data.vertices)):RAPIER.ColliderDesc.cuboid(...box.h);
     if(!collider)throw new Error('Invalid arena convex solid');
@@ -22,7 +23,7 @@ export class RapierMotor {
   readonly controller:RAPIER.KinematicCharacterController;
   state:MotionState;
   private readonly solids = (c:RAPIER.Collider)=>c.handle!==this.collider.handle && !this.players.has(c.handle);
-  constructor(readonly world:RAPIER.World, state:MotionState, private readonly players:Set<number>) {
+  constructor(readonly world:RAPIER.World, state:MotionState, private readonly players:Set<number>,private readonly mapId:MapId='canyon') {
     this.state=copyState(state);
     this.collider=world.createCollider(RAPIER.ColliderDesc.capsule(MOVE.standHalf,MOVE.radius)
       .setTranslation(state.p.x,state.p.y,state.p.z));
@@ -66,6 +67,7 @@ export class RapierMotor {
     }
     s.grounded=this.controller.computedGrounded();
     if(s.grounded && s.v.y<0)s.v.y=0;
+    applyTraversal(s,this.mapId);
     this.collider.setTranslation(s.p);
     if(!Object.values(s.p).every(Number.isFinite)||!Object.values(s.v).every(Number.isFinite)) throw new Error('Invalid physics state');
   }

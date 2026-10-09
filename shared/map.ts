@@ -1,4 +1,5 @@
-﻿export const MAP_VERSION='rift-canyon-5';
+import {expandCanyon} from './districts.ts';
+﻿export const MAP_VERSION='rift-expedition-6';
 export const MAP_SIZE=128;
 export type VecTuple=readonly [number,number,number];
 export type SurfaceKind='ground'|'stone'|'metal'|'crate';
@@ -57,6 +58,7 @@ for(const [x,z,w,h,d] of [[-26,-22,4.5,3.8,3.7],[24,-16,4.5,4,3.5],[34,42,4.2,3,
 for(const [x,z] of [[-18,-32],[34,-8],[46,49],[-48,-46],[0,25],[-25,43],[-40,3]]){
   pair([x,0.65,z],[1.8,0.65,1.3],'crate');
 }
+expandCanyon(BOXES);
 export const SPAWNS:readonly VecTuple[]=[
   [-54,1.05,-54],[54,1.05,54],[54,1.05,-54],[-54,1.05,54],
   [-42,1.05,0],[42,1.05,0],[0,1.05,-52],[0,1.05,52],

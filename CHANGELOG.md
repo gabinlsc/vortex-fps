@@ -1,3 +1,11 @@
+# Vortex 0.6 — Expedition
+
+Les 40 propositions validées reçoivent une première implémentation jouable : nouveaux districts, passerelles et terrasses, deuxième map Harbor, texture illustrée originale, eau et biomes, variantes de lumière, ambiance sonore, entraînement hors ligne, photo et relecture.
+
+Les modes Domination et Capture du drapeau, les ravitaillements, pads, portails et pings sont gérés par le serveur. Les traînées Rail/Pulse suivent les événements et positions autoritaires, avec impacts selon le matériau. Le changement de carte isole mondes physiques, cibles, scores et événements.
+
+La version est publiée par branches et PR. Les détails et limites de chaque ajout sont dans [docs/FEATURES.md](docs/FEATURES.md).
+
 # Vortex 0.5 — Rift Canyon
 
 La map devient un canyon de grès aux falaises facettées, avec place centrale, avant-poste, grottes de cristal, jardins surélevés et chemins courbes. Deux rampes continues rendent le toit accessible à pied. Les rochers et rampes utilisent la même géométrie pour le rendu, les collisions et les rayons de tir.

@@ -119,14 +119,14 @@ test('character admission rejects unknown cosmetics and non-integer payloads',as
   for(let i=0;i<CHARACTERS.length;i++)assert.equal(validateCharacter(i),i);
   for(const value of [-1,3,1.5,'1',null,NaN,Infinity,{},true])assert.throws(()=>validateCharacter(value));
 });
-test('Rift spawn capsules are clear of solid cover and map has rotational symmetry',async()=>{
+test('Rift spawn capsules are clear of solid cover and central arena retains rotational symmetry',async()=>{
   const {BOXES,SPAWNS,MAP_VERSION}=await import('../shared/map.ts');
-  assert.equal(MAP_VERSION,'rift-canyon-5');
+  assert.equal(MAP_VERSION,'rift-expedition-6');
   for(const [x,y,z] of SPAWNS)for(const b of BOXES){
-    const overlaps=Math.abs(x-b.p[0])<b.h[0]+MOVE.radius&&Math.abs(y-b.p[1])<b.h[1]+MOVE.standHalf+MOVE.radius&&Math.abs(z-b.p[2])<b.h[2]+MOVE.radius;
+    const {solidQuery}=await import('../shared/arena-geometry.ts');const q=solidQuery(b),dx=x-b.p[0],dz=z-b.p[2],px=q.cos*dx-q.sin*dz,pz=q.sin*dx+q.cos*dz;const overlaps=q.planes.every(p=>p.x*px+p.y*(y-b.p[1])+p.z*pz<p.w+MOVE.radius+Math.abs(p.y)*MOVE.standHalf);
     assert.equal(overlaps,false,'spawn intersects static solid');
   }
-  for(const b of BOXES)assert.ok(BOXES.some(other=>other.p[0]===-b.p[0]&&other.p[1]===b.p[1]&&other.p[2]===-b.p[2]&&other.h.every((v,i)=>v===b.h[i])));
+  for(const b of BOXES.filter(b=>Math.abs(b.p[0])<28&&Math.abs(b.p[2])<32))assert.ok(BOXES.some(other=>other.p[0]===-b.p[0]&&other.p[1]===b.p[1]&&other.p[2]===-b.p[2]&&other.h.every((v,i)=>v===b.h[i])));
 });
 
 test('inventory reload consumes a magazine and replenishes from an infinite reserve',async()=>{

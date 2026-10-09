@@ -1,6 +1,10 @@
+import {batchStatic} from './static-batch.ts';
+import {buildBiomes,illustratedStone} from './biomes.ts';
+import {buildDistricts} from './districts.ts';
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {BOXES,ROUTES,SPAWNS,type ArenaBox,type SurfaceKind} from '../shared/map.ts';
+import {getMap,type MapId} from '../shared/maps.ts';
 import {solidMesh} from '../shared/arena-geometry.ts';
 import {buildLandscape,animateLandscape} from './landscape.ts';
 import {CEL_GRADIENT,paintedMaterial,toonMaterial,type PaintedSurface} from './materials.ts';
@@ -41,7 +45,8 @@ function path(points:readonly (readonly [number,number])[],width:number,m:THREE.
   const index:number[]=[];for(let i=0;i<79;i++)index.push(i*2,i*2+2,i*2+1,i*2+1,i*2+2,i*2+3);
   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(position,3));geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geometry.setIndex(index);geometry.computeVertexNormals();return new THREE.Mesh(geometry,m);
 }
-export function buildArena(scene:THREE.Scene):void {
+export function buildArena(scene:THREE.Scene,mapId:MapId='canyon'):void {
+  const {boxes:BOXES,routes:ROUTES,spawns:SPAWNS}=getMap(mapId);scene.userData.mapId=mapId;
   scene.background=new THREE.Color(0xb8d9d7);scene.fog=new THREE.Fog(0xc8d5c6,100,250);
   scene.add(new THREE.HemisphereLight(0xfff3df,0x626e69,1.05));
   const sun=new THREE.DirectionalLight(0xffe2b0,2.2);sun.name='arena-sun';sun.position.set(-45,80,-35);scene.add(sun);
@@ -53,11 +58,12 @@ export function buildArena(scene:THREE.Scene):void {
   }
   for(const [surface,batch]of groups){
     const parts=batch.map(arenaGeometry),geometry=mergeGeometries(parts)!;for(const part of parts)part.dispose();
-    const mesh=new THREE.Mesh(geometry,paintedMaterial(surface,true));mesh.name='arena-'+surface;mesh.castShadow=surface!=='sand';mesh.receiveShadow=true;scene.add(mesh);
+    const mesh=new THREE.Mesh(geometry,surface==='sandstone'?illustratedStone():paintedMaterial(surface,true));mesh.name='arena-'+surface;mesh.castShadow=surface!=='sand';mesh.receiveShadow=true;scene.add(mesh);
   }
   const routeMaterial=new THREE.MeshToonMaterial({color:0xefd4a1,gradientMap:gradient});
   for(const points of ROUTES)scene.add(path(points,5.5,routeMaterial));
   const plaza=new THREE.Mesh(new THREE.CircleGeometry(16,48),routeMaterial);plaza.rotation.x=-Math.PI/2;plaza.position.y=0.032;scene.add(plaza);
+  if(mapId==='canyon'){
   // Ceramic facade plates and graphite seams lie flush on solid walls.
   for(const sign of [-1,1]){
     for(const x of [-7,7]){
@@ -95,16 +101,19 @@ export function buildArena(scene:THREE.Scene):void {
   const core=new THREE.Group();core.name='rift-core';core.position.set(0,9.2,0);
   const crystal=new THREE.Mesh(new THREE.OctahedronGeometry(1.1),material(0x7de3c9));crystal.scale.y=1.6;core.add(crystal);
   const orbit=new THREE.Mesh(new THREE.TorusGeometry(2.1,0.08,8,64),glow);orbit.rotation.x=0.7;core.add(orbit);scene.add(core);
+  }
   for(const [x,,z] of SPAWNS){const ring=new THREE.Mesh(new THREE.TorusGeometry(1.5,0.04,5,32),z<0?materials.azure:materials.ember);ring.rotation.x=-Math.PI/2;ring.position.set(x,0.04,z);scene.add(ring);}
   // Far mesas extend the playable canyon's silhouette.
   const mountainMaterial=material(0xb39286);
-  for(let i=0;i<20;i++){
+  for(let i=0;i<(mapId==='canyon'?20:0);i++){
     const angle=i/20*Math.PI*2,height=20+i%5*5,mountain=new THREE.Mesh(new THREE.CylinderGeometry(6+i%4,16,height,6),mountainMaterial);
     mountain.position.set(Math.cos(angle)*130,height/2-3,Math.sin(angle)*130);scene.add(mountain);
   }
-  buildLandscape(scene);
+  buildLandscape(scene,BOXES,ROUTES);buildDistricts(scene,mapId);buildBiomes(scene,mapId);batchStatic(scene);
 }
 export function animateArena(scene:THREE.Scene,time:number):void {
   animateLandscape(scene,time);
   const core=scene.getObjectByName('rift-core');if(core){core.rotation.y=time*0.3;core.position.y=9.2+Math.sin(time*1.4)*0.12;}
 }
+
+export function clearArena(scene:THREE.Scene):void {const geometries=new Set<THREE.BufferGeometry>(),materials=new Set<THREE.Material>(),textures=new Set<THREE.Texture>();scene.traverse(o=>{if(o instanceof THREE.Mesh){geometries.add(o.geometry);for(const m of Array.isArray(o.material)?o.material:[o.material]){materials.add(m);for(const value of Object.values(m))if(value instanceof THREE.Texture)textures.add(value);}if(o instanceof THREE.InstancedMesh)o.dispose();}if(o instanceof THREE.Sprite){materials.add(o.material);if(o.material.map)textures.add(o.material.map);}});for(const t of textures)t.dispose();for(const m of materials)m.dispose();for(const g of geometries)g.dispose();for(const o of [...scene.children])scene.remove(o);}

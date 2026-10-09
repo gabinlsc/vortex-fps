@@ -1,20 +1,16 @@
-﻿# Validation Vortex 0.5
+# Validation Vortex 0.6
 
-Validation locale Windows / Node.js 24.19.0, le 9 octobre 2026 :
+Validation Windows / Node.js 24.19.0 du 9 octobre 2026 :
 
-- 29 tests unitaires : mouvement, codecs, combat, symétrie et spawns, compteur de tirs, réglages et intersections des solides convexes.
-- 8 tests d'intégration et réseau : replay Rapier, snapshots, stabilité des spawns, accès aux jardins et au toit sans saut dans les deux sens, comparaison de 80 rayons avec les collisions Rapier, serveur réel, isolation FFA/TDM et chargeurs.
-- Build TypeScript, Vite et serveur esbuild réussi.
-- 3 scénarios Chromium / WebGL logiciel : partie multijoueur, classement, armes, tir, rechargement et changement de salon ; réglages persistants et interface 390 × 844 ; changements de qualité faible, moyenne, haute puis faible.
+- 37 tests unitaires : ABI, mouvement, collisions convexes, combat et réglages ; zones contestées et capture, drapeaux et retours, soins et cooldowns, validation des cartes/pings, dispositifs de mouvement, navigation bornée, relectures et résolution adaptative.
+- 11 tests d’intégration/réseau : replay Rapier, snapshots, spawns, rampes du toit/jardin, nouvelles passerelles/terrasses/wagons/chantier, Harbor, activation réelle des pads/portails, comparaison de 80 rayons et serveur réel avec isolation des deux cartes et des quatre modes, pings et projectiles.
+- 6 scénarios navigateur Chromium / SwiftShader : multijoueur et chargeurs ; réglages/mobile ; qualités graphiques ; maps/nuit/visite hors ligne sans socket et PNG photo ; stand/export/import de relecture/bots/parcours ; Harbor en Domination et CTF.
+- Build TypeScript, Vite et esbuild réussi. Aucun benchmark matériel ni test de charge à 16 joueurs n’est revendiqué. Vite signale toujours le bundle client supérieur à 500 kB, incluant Three.js/Rapier.
 
-Soit 40 tests réussis. Les captures du lobby, du HUD et des réglages mobiles sont produites dans `test-results/`. La CI conserve les captures navigateur dans vortex-browser-review.
+Total : 54 tests. Les captures et traces sont dans test-results/, ignoré par Git et conservé par la CI.
 
-`npm run review:map` produit cinq vues contrôlées : ensemble du canyon, place, grotte, jardin et toit. Elles ont été examinées pour vérifier les textures, la disposition du décor et les ombres. `npm run review:map -- low` permet une revue sans shadow maps.
+Le script de revue produit neuf points de vue et attend le chargement de la texture illustrée : npm run review:map ; variantes avec -- low, -- night ou -- harbor. Les meshes statiques opaques sont regroupés par matériau. La vue d’ensemble est passée de 287 à 181 appels de rendu lors de cette optimisation locale ; ce nombre décrit la scène, pas les FPS d’un matériel.
 
-La géométrie des rochers et rampes est partagée entre rendu, physique et rayons de tir. Les parcours sont traversés avec le contrôleur physique réel, sans saut ; les deux côtés symétriques et les descentes sont couverts. La végétation décorative reste traversable, à l'exception des quatre troncs des jardins qui ont des collisions partagées.
+La carte conserve les douze spawns et le cœur symétrique. Les nouveaux districts sont distincts ; l’équilibrage compétitif nécessite des parties de jeu. Les bots sont locaux et naviguent au sol. La relecture en ligne conserve poses et événements ; les sessions hors ligne conservent poses et statistiques. Les textures illustrées sont locales ; l’eau reflète un ciel simplifié. Le terrain n’est pas creusé sous le sol : les passages sont abrités par des coques rocheuses.
 
-Les traînées de tir restent cosmétiques, reconstruites depuis les snapshots existants ; voir README pour leurs limites de synchronisation. Les marqueurs de touche suivent les hits confirmés. Les tests navigateur ne mesurent pas la fidélité balistique des traînées.
-
-Le rendu regroupe les solides par matériau et instancie les plantes. La qualité faible désactive les shadow maps et réduit la végétation ; les qualités moyenne et haute utilisent des cartes d'ombres de 1024 et 2048 pixels. Les animations d'ambiance respectent le réglage de réduction des animations. Ces vérifications ne constituent ni un benchmark matériel à 144 FPS ni une qualification de charge à 16 joueurs. Vite signale toujours un bundle client supérieur à 500 kB, incluant Three.js et Rapier.
-
-Le périmètre de matchmaking, OIDC et publication décrit dans ARCHITECTURE.md est conservé.
+Le contrat réseau figure dans docs/NETWORK-EXPEDITION.md. Le matchmaking HTTP/OIDC existant n’est pas modifié. Le client et le serveur doivent partager rift-expedition-6.
