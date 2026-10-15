@@ -13,7 +13,7 @@ async function waitFor(predicate:()=>boolean,timeout=8000):Promise<void>{
 test('real server isolates modes, balances teams, transmits names and replenishes magazines',{timeout:25000},async()=>{
   const probe=createServer();await new Promise<void>(resolve=>probe.listen(0,'127.0.0.1',resolve));
   const port=(probe.address() as {port:number}).port;await new Promise<void>(resolve=>probe.close(()=>resolve()));
-  const server=spawn(process.execPath,['node_modules/tsx/dist/cli.mjs','server/main.ts','--local-dev'],{env:{...process.env,PORT:String(port)},stdio:['ignore','pipe','pipe']});
+  const server=spawn(process.execPath,['--import','tsx','server/main.ts','--local-dev'],{env:{...process.env,PORT:String(port)},stdio:['ignore','pipe','pipe']});
   let output='';server.stdout.on('data',data=>{output+=String(data);});server.stderr.on('data',data=>{output+=String(data);});
   const clients:{ws:WebSocket;latest:Snapshot|undefined;seq:number;events:any[]}[]=[];
   try{
@@ -32,6 +32,13 @@ test('real server isolates modes, balances teams, transmits names and replenishe
     assert.deepEqual(alpha.latest!.players.map(p=>p.name).sort(),['Alpha','Bravo']);
     assert.deepEqual(red.latest!.players.map(p=>p.team).sort(),[1,2]);
     assert.ok(alpha.latest!.players.every(p=>p.team===0));
+    if(process.platform!=='win32'){
+      // Reproduce a local host stall without relying on machine performance.
+      const before=alpha.latest!.tick;server.kill('SIGSTOP');
+      try{await delay(400);}finally{server.kill('SIGCONT');}
+      await waitFor(()=>Boolean(alpha.latest&&alpha.latest.tick>before+4));
+      assert.equal(alpha.ws.readyState,WebSocket.OPEN);
+    }
     const local=()=>alpha.latest!.players.find(p=>p.id===alpha.latest!.self)!;
     await waitFor(()=>local().protectedLeft===0);
     alpha.ws.send(encodeBatch([{seq:++alpha.seq,yaw:0,pitch:0,buttons:Button.Fire,weapon:0,phase:0}]));

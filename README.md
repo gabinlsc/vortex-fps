@@ -3,11 +3,11 @@ FPS multijoueur navigateur : Three.js, Rapier WASM, TypeScript, serveur autorita
 ## Lancer une partie
 Node.js 24 recommandé.
 ```sh
-npm install
+npm ci
 npm run prisma:generate
 npm run play
 ```
-Ouvrir http://localhost:5173, choisir un pseudo, FFA ou Team Deathmatch, le pilote et l'arme, puis lancer.
+Ouvrir http://127.0.0.1:5173, choisir un pseudo, FFA ou Team Deathmatch, le pilote et l'arme, puis lancer.
 Ouvrir un second onglet pour rejoindre la même partie. Si le navigateur refuse la capture initiale de la souris, cliquer sur Reprendre.
 Le serveur de développement est limité à 127.0.0.1. Pour une publication, configurer un endpoint WSS via VITE_GAME_URL, ALLOWED_ORIGINS, TICKET_SECRET et MATCH_ID ; les tickets d'admission restent obligatoires hors développement.
 ## Contrôles

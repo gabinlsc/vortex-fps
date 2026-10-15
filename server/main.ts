@@ -24,7 +24,9 @@ const host=dev?'127.0.0.1':process.env.HOST??'0.0.0.0',port=Number(process.env.P
 if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid port');
 const origins=new Set((process.env.ALLOWED_ORIGINS??'http://localhost:5173,http://127.0.0.1:5173').split(','));
 const worlds=new Map(await Promise.all(MAP_IDS.map(async id=>[id,await createArena(id)] as const)));
-const world=worlds.get('canyon')!,handles=new Set<number>(),history=new History(32),lifecycle=new AgonesLifecycle();
+// Rapier handles are local to a world: never share exclusion sets across maps.
+const playerHandles=new Map(MAP_IDS.map(id=>[id,new Set<number>()] as const));
+const history=new History(32),lifecycle=new AgonesLifecycle();
 let tick=0,nextId=1,nextProjectile=1,running=true;
 interface Queued {input:Input;receiptTick:number}
 interface Peer {
@@ -172,7 +174,7 @@ wss.on('connection',ws=>{
         const id=nextId++,now=performance.now(),team=assignTeam(mode,[...peers.values()].filter(p=>p.mode===mode&&p.mapId===mapId).map(p=>p.team));
         const spawn=chooseSpawn(team,[...peers.values()].filter(p=>p.mode===mode&&p.mapId===mapId&&(mode==='ffa'||p.team!==team)&&p.health>0).map(p=>p.motor.state.p),id,getMap(mapId).spawns);
         room(mode,mapId);
-        peer={id,mapId,lastPing:-512,character,name,mode,team,kills:0,assists:0,deaths:0,respawnAt:0,protectedUntil:tick+TICK_HZ,contributors:new Map(),inventory:newInventory(),sub,ws,motor:new RapierMotor(worlds.get(mapId)!,initialState(spawn[0],spawn[1],spawn[2]),handles,mapId),queue:[],head:0,
+        peer={id,mapId,lastPing:-512,character,name,mode,team,kills:0,assists:0,deaths:0,respawnAt:0,protectedUntil:tick+TICK_HZ,contributors:new Map(),inventory:newInventory(),sub,ws,motor:new RapierMotor(worlds.get(mapId)!,initialState(spawn[0],spawn[1],spawn[2]),playerHandles.get(mapId)!,mapId),queue:[],head:0,
           received:0,ack:0,last:{seq:0,yaw:0,pitch:0,buttons:0,weapon:0,phase:0},epoch:0,health:100,hits:0,
           nextShot:tick,shotIndex:0,rtt:0,rttSamples:[],nonce:null,pingTime:0,
           authTime:now,budget:16,budgetTime:now,lastPacket:now};
@@ -213,7 +215,12 @@ function pump():void {
   const now=performance.now();let steps=0;
   while(now>=deadline && steps<4){fixedTick();deadline+=DT*1000;steps++;}
   // Never drop simulation time or spiral into an unbounded catch-up. Terminate an unhealthy match.
-  if(now-deadline>250){console.error('Tick deadline missed >250ms');void shutdown(1);return;}
+  if(now-deadline>250){
+    if(!dev){console.error('Tick deadline missed >250ms');void shutdown(1);return;}
+    // A local GPU/software render stall must not kill the development server.
+    // Keep fixed simulation ticks, but re-anchor wall time instead of catching up forever.
+    console.warn('Local tick schedule reset after host stall');deadline=now+DT*1000;
+  }
   timer=setTimeout(pump,Math.max(0,deadline-performance.now()));
 }
 timer=setTimeout(pump,DT*1000);
