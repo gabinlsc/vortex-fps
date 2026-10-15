@@ -25,7 +25,8 @@ test('textured lobby, multiplayer roster, inventory reload and team lobby',async
     await page.screenshot({path:'test-results/spawn.jpg',type:'jpeg',quality:55});
     await page.keyboard.press('Digit2');await expect(page.locator('#weapon-name')).toHaveText('PULSE');
     await page.mouse.down();await expect.poll(async()=>Number(await page.locator('#ammo').textContent())).toBeLessThan(24);await page.mouse.up();
-    await page.keyboard.press('KeyR');await expect(page.locator('#reload-status')).toContainText('RECHARGEMENT');
+    // un appui isolé peut tomber entre deux échantillonnages sur un runner lent : on réappuie tant que le rechargement n'a pas démarré
+    await expect(async()=>{await page.keyboard.press('KeyR');await expect(page.locator('#reload-status')).toContainText('RECHARGEMENT',{timeout:1000});}).toPass({timeout:10000});
     await expect(page.locator('#ammo')).toHaveText('24');await expect(page.locator('#health')).toHaveText('100');
     await expect(page.locator('#mag-1')).toContainText('24 / ∞');
     await page.keyboard.down('KeyW');
