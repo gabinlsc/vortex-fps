@@ -25,7 +25,7 @@ export class RapierMotor {
   private readonly solids = (c:RAPIER.Collider)=>c.handle!==this.collider.handle && !this.players.has(c.handle);
   constructor(readonly world:RAPIER.World, state:MotionState, private readonly players:Set<number>,private readonly mapId:MapId='canyon') {
     this.state=copyState(state);
-    this.collider=world.createCollider(RAPIER.ColliderDesc.capsule(MOVE.standHalf,MOVE.radius)
+    this.collider=world.createCollider(RAPIER.ColliderDesc.capsule(state.crouched?MOVE.crouchHalf:MOVE.standHalf,MOVE.radius)
       .setTranslation(state.p.x,state.p.y,state.p.z));
     players.add(this.collider.handle);
     this.controller=world.createCharacterController(MOVE.skin);

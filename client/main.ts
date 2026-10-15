@@ -66,7 +66,7 @@ try{
   const saved=JSON.parse(localStorage.getItem('vortex-loadout')??'{}');
   if(Number.isInteger(saved.character)&&saved.character>=0&&saved.character<CHARACTERS.length)character=saved.character;
   if(saved.weapon===0||saved.weapon===1)weapon=saved.weapon;
-  if(saved.mode==='ffa'||saved.mode==='tdm')mode=saved.mode;
+  if(['ffa','tdm','domination','ctf'].includes(saved.mode))mode=saved.mode as GameMode;
   if(typeof saved.name==='string')nameInput.value=nickname(saved.name);
 }catch{}
 const silhouettes=[
@@ -128,7 +128,7 @@ addEventListener('keydown',e=>{
 addEventListener('keyup',e=>{keys.delete(e.code);if(e.code==='Tab')element('scoreboard').hidden=true;updateButtons();});
 element('open-scores').onclick=()=>{element('scoreboard').hidden=false;};
 element('close-scores').onclick=()=>{element('scoreboard').hidden=true;};
-addEventListener('blur',()=>{keys.clear();buttons=0;element('scoreboard').hidden=true;});
+addEventListener('blur',()=>{keys.clear();buttons=0;edgeButtons=0;element('scoreboard').hidden=true;});
 addEventListener('mousemove',e=>{if(document.pointerLockElement!==canvas||!self)return;if(ignoreLook>0){ignoreLook--;return;}if(Math.abs(e.movementX)>innerWidth/2||Math.abs(e.movementY)>innerHeight/2)return;yaw-=e.movementX*0.002*settings.sensitivity;pitch=Math.max(-Math.PI/2,Math.min(Math.PI/2,pitch-e.movementY*0.002*settings.sensitivity));});
 canvas.addEventListener('wheel',e=>{if(document.pointerLockElement!==canvas||!self)return;e.preventDefault();weapon=1-weapon;refreshLoadout();},{passive:false});
 canvas.addEventListener('mousedown',e=>{if(e.button===0&&!photo&&document.pointerLockElement===canvas&&self){buttons|=Button.Fire;edgeButtons|=Button.Fire;}});

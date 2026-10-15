@@ -27,6 +27,9 @@ test('textured lobby, multiplayer roster, inventory reload and team lobby',async
     await page.mouse.down();await expect.poll(async()=>Number(await page.locator('#ammo').textContent())).toBeLessThan(24);await page.mouse.up();
     await page.keyboard.press('KeyR');await expect(page.locator('#reload-status')).toContainText('RECHARGEMENT');
     await expect(page.locator('#ammo')).toHaveText('24');await expect(page.locator('#health')).toHaveText('100');
+    await expect(page.locator('#mag-1')).toContainText('24 / ∞');
+    await page.keyboard.down('KeyW');
+    try{await expect.poll(async()=>Number(await page.locator('#speed').textContent())).toBeGreaterThan(2);}finally{await page.keyboard.up('KeyW');}
     await page.screenshot({path:'test-results/arena.jpg',type:'jpeg',quality:55});
     await page.evaluate(()=>document.exitPointerLock());await page.locator('#leave').click();peer.terminate();
     peer=await otherPlayer('tdm');await page.locator('[data-mode="tdm"]').click();await page.locator('#join').click();

@@ -103,3 +103,49 @@ test('map raycasts match Rapier convex geometry including sloped and beveled fac
     }
   }finally{world.free();}
 });
+
+test('crouched initial snapshots use the same capsule as a restored crouched motor',async()=>{
+  const {MOVE}=await import('../shared/movement.ts');
+  const worlds=await Promise.all([createArena(),createArena()]);
+  const state=initialState(0,0.6,20);state.crouched=true;
+  const a=new RapierMotor(worlds[0],state,new Set());
+  const b=new RapierMotor(worlds[1],initialState(0,1,20),new Set());b.restore(state);
+  try{
+    assert.ok(Math.abs(a.collider.halfHeight()-MOVE.crouchHalf)<1e-6);
+    for(let seq=1;seq<=128;seq++){
+      const input=canonical({seq,yaw:0,pitch:0,buttons:Button.Slide|Button.Forward,weapon:0,phase:0});
+      a.tick(input);worlds[0].step();b.tick(input);worlds[1].step();assert.deepEqual(a.state,b.state);
+    }
+    assert.ok(a.state.grounded);
+  }finally{a.dispose();b.dispose();worlds.forEach(w=>w.free());}
+});
+
+test('WASM prediction reconciles across crouch, jump and release without replay drift',async()=>{
+  const {Predictor}=await import('../client/netcode.ts');
+  const worlds=await Promise.all([createArena(),createArena()]);
+  const motors=worlds.map(w=>new RapierMotor(w,initialState(0,1.05,20),new Set()));
+  const predictor=new Predictor(motors[1],()=>worlds[1].step());
+  const snapshots=[];
+  try{
+    for(let seq=1;seq<=240;seq++){
+      const buttons=Button.Forward|(seq<80?Button.Slide:seq<160?Button.Jump:0);
+      const input=canonical({seq,yaw:0.25,pitch:0,buttons,weapon:0,phase:0});
+      motors[0].tick(input);worlds[0].step();predictor.predict(input);
+      snapshots.push({id:1,ack:seq,state:copyState(motors[0].state),yaw:0.25,pitch:0,health:100,epoch:0,hits:0});
+      if(seq>8&&seq%4===0){predictor.reconcile(snapshots[seq-9]);assert.deepEqual(motors[1].state,motors[0].state);}
+    }
+  }finally{motors.forEach(m=>m.dispose());worlds.forEach(w=>w.free());}
+});
+
+test('both grotto entrances are walkable below the solid stone roofs',async()=>{
+  for(const sign of [-1,1]){
+    const world=await createArena(),motor=new RapierMotor(world,initialState(43*sign,1.05,5*sign),new Set());
+    try{
+      for(let seq=1;seq<=150;seq++){
+        motor.tick(canonical({seq,yaw:sign>0?Math.PI:0,pitch:0,buttons:Button.Forward,weapon:0,phase:0}));world.step();
+      }
+      assert.ok(sign*motor.state.p.z>12,JSON.stringify(motor.state.p));
+      assert.ok(motor.state.grounded);assert.ok(motor.state.p.y<1.2);
+    }finally{motor.dispose();world.free();}
+  }
+});
