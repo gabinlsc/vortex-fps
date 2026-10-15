@@ -10,6 +10,8 @@ npm run play
 Ouvrir http://127.0.0.1:5173, choisir un pseudo, FFA ou Team Deathmatch, le pilote et l'arme, puis lancer.
 Ouvrir un second onglet pour rejoindre la même partie. Si le navigateur refuse la capture initiale de la souris, cliquer sur Reprendre.
 Le serveur de développement est limité à 127.0.0.1. Pour une publication, configurer un endpoint WSS via VITE_GAME_URL, ALLOWED_ORIGINS, TICKET_SECRET et MATCH_ID ; les tickets d'admission restent obligatoires hors développement.
+
+`RESULTS_FILE` (facultatif) : à chaque fin de manche, le serveur y ajoute une ligne JSON (mode, carte, score des équipes, joueurs classés avec éliminations, morts et assistances). Elle alimente le classement de games.glsc.fr ; les joueurs restés inactifs ne sont pas comptés.
 ## Contrôles
 | Action | Contrôle |
 |---|---|

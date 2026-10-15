@@ -17,12 +17,14 @@ import {nickname,validateMode,assignTeam,canDamage,chooseSpawn,type GameMode,typ
 import {validateCharacter} from '../shared/characters.ts';
 import {verifyTicket} from './tickets.ts';
 import {AgonesLifecycle} from './agones.ts';
+import {roundRecord,fileResultSink} from './results.ts';
 
 const dev=process.argv.includes('--local-dev'),secret=process.env.TICKET_SECRET??'',match=process.env.MATCH_ID??'local-match';
 if(!dev && secret.length<32)throw new Error('TICKET_SECRET required. Local development: npm run server:dev');
 const host=dev?'127.0.0.1':process.env.HOST??'0.0.0.0',port=Number(process.env.PORT??8080);
 if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid port');
 const origins=new Set((process.env.ALLOWED_ORIGINS??'http://localhost:5173,http://127.0.0.1:5173').split(','));
+const results=process.env.RESULTS_FILE?fileResultSink(process.env.RESULTS_FILE):null; // classement de games.glsc.fr
 const worlds=new Map(await Promise.all(MAP_IDS.map(async id=>[id,await createArena(id)] as const)));
 // Rapier handles are local to a world: never share exclusion sets across maps.
 const playerHandles=new Map(MAP_IDS.map(id=>[id,new Set<number>()] as const));
@@ -118,6 +120,7 @@ function fixedTick():void {
       if(currentRoom.end&&tick>=currentRoom.end){
         const winners=members.slice().sort((a,b)=>b.kills-a.kills);
         event(mode,{type:'round',winner:mode==='ffa'?(winners[0]?.name??'Personne'):currentRoom.score1===currentRoom.score2?'Égalité':currentRoom.score1>currentRoom.score2?'Équipe Azure':'Équipe Ember'},mapId);
+        const record=results&&roundRecord(members,mode,mapId,currentRoom.score1,currentRoom.score2);if(record)results(record);
         currentRoom.end=tick+600*TICK_HZ;currentRoom.score1=0;currentRoom.score2=0;currentRoom.objectives=newObjectives();
         for(const p of members){p.kills=0;p.assists=0;p.deaths=0;respawn(p);}
       }
